@@ -8,6 +8,8 @@ export interface Question {
     d: string;
   };
   answer: 'a' | 'b' | 'c' | 'd';
+  subject: string;
+  difficulty: 'easy' | 'medium' | 'hard';
 }
 
 export interface ExamDetails {

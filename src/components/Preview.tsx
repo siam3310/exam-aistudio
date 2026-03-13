@@ -20,36 +20,63 @@ export default function Preview({ examDetails, questions, onBack }: PreviewProps
 
   const handleExportPDF = async () => {
     if (!paperRef.current) return;
+    const element = paperRef.current;
+    const originalStyle = element.style.cssText;
     
     try {
-      const canvas = await html2canvas(paperRef.current, {
+      // Temporarily adjust styles to ensure full capture
+      element.style.height = 'auto';
+      element.style.overflow = 'visible';
+      
+      const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
         logging: false,
+        scrollY: 0,
       });
       
       const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'px',
-        format: [canvas.width, canvas.height]
-      });
+      const pdf = new jsPDF('p', 'mm', 'a4');
       
-      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      
+      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+      
       pdf.save(`${examDetails.examName || 'Question_Paper'}.pdf`);
     } catch (error) {
       console.error('Error generating PDF:', error);
+    } finally {
+      element.style.cssText = originalStyle;
     }
   };
 
   const handleExportPNG = async () => {
     if (!paperRef.current) return;
+    const element = paperRef.current;
+    const originalStyle = element.style.cssText;
     
     try {
-      const canvas = await html2canvas(paperRef.current, {
+      element.style.height = 'auto';
+      element.style.overflow = 'visible';
+      
+      const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
         logging: false,
+        scrollY: 0,
       });
       
       const link = document.createElement('a');
@@ -58,6 +85,8 @@ export default function Preview({ examDetails, questions, onBack }: PreviewProps
       link.click();
     } catch (error) {
       console.error('Error generating PNG:', error);
+    } finally {
+      element.style.cssText = originalStyle;
     }
   };
 
