@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Question, Taxonomy } from '../types';
-import { Search, Plus, Filter, CheckCircle2, Circle, Trash2, Settings, Sparkles } from 'lucide-react';
+import { Search, Plus, Filter, CheckCircle2, Circle, Trash2, Settings, Sparkles, Pencil } from 'lucide-react';
 import { db } from '../firebase';
 import { doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import AIGenerator from './AIGenerator';
@@ -21,6 +21,7 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
   const [chapterFilter, setChapterFilter] = useState<string>('All');
   const [difficultyFilter, setDifficultyFilter] = useState<string>('All');
   const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [isManagingTaxonomy, setIsManagingTaxonomy] = useState(false);
   const [isAIGeneratorOpen, setIsAIGeneratorOpen] = useState(false);
 
@@ -50,9 +51,9 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
     });
   }, [bank, searchTerm, classFilter, subjectFilter, chapterFilter, difficultyFilter]);
 
-  const handleAddQuestion = async () => {
+  const handleSaveQuestion = async () => {
     if (!newQ.text || !newQ.className || !newQ.subject || !newQ.chapter) return;
-    const questionId = crypto.randomUUID();
+    const questionId = editingId || crypto.randomUUID();
     const question: Question = {
       id: questionId,
       text: newQ.text!,
@@ -65,9 +66,20 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
       authorUid: userUid,
     };
     
+    // Store previous state for rollback
+    const previousBank = [...bank];
+    const previousExamQuestions = [...examQuestions];
+
     // Optimistic update
-    setBank([question, ...bank]);
+    if (editingId) {
+      setBank(bank.map(q => q.id === editingId ? question : q));
+      setExamQuestions(examQuestions.map(q => q.id === editingId ? question : q));
+    } else {
+      setBank([question, ...bank]);
+    }
+    
     setIsAdding(false);
+    setEditingId(null);
     setNewQ({
       text: '',
       options: { a: '', b: '', c: '', d: '' },
@@ -80,15 +92,42 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
 
     try {
       const qRef = doc(db, `users/${userUid}/questions/${questionId}`);
-      await setDoc(qRef, {
-        ...question,
-        createdAt: serverTimestamp()
-      });
+      const payload: any = { ...question };
+      if (!editingId) {
+        payload.createdAt = serverTimestamp();
+      } else {
+        delete payload.id;
+        delete payload.authorUid;
+        delete payload.createdAt;
+      }
+      await setDoc(qRef, payload, { merge: true });
     } catch (error) {
-      console.error("Error adding question:", error);
+      console.error("Error saving question:", error);
       // Revert optimistic update on error
-      setBank(bank.filter(q => q.id !== questionId));
+      setBank(previousBank);
+      setExamQuestions(previousExamQuestions);
     }
+  };
+
+  const handleEdit = (q: Question) => {
+    setNewQ(q);
+    setEditingId(q.id);
+    setIsAdding(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+    setIsAdding(false);
+    setEditingId(null);
+    setNewQ({
+      text: '',
+      options: { a: '', b: '', c: '', d: '' },
+      answer: 'a',
+      className: '',
+      subject: '',
+      chapter: '',
+      difficulty: 'medium',
+    });
   };
 
   const toggleExamQuestion = (q: Question) => {
@@ -243,7 +282,7 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
             Generate with AI
           </button>
           <button
-            onClick={() => setIsAdding(!isAdding)}
+            onClick={() => isAdding ? handleCancelEdit() : setIsAdding(true)}
             className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-lg font-medium hover:bg-zinc-200 transition-colors"
           >
             <Plus size={18} />
@@ -333,7 +372,9 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
 
       {isAdding && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-8 space-y-4">
-          <h2 className="text-xl font-semibold text-white mb-4">Add New Question</h2>
+          <h2 className="text-xl font-semibold text-white mb-4">
+            {editingId ? 'Edit Question' : 'Add New Question'}
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-zinc-400 mb-1">Question Text</label>
@@ -419,13 +460,19 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
             ))}
           </div>
           
-          <div className="flex justify-end mt-6">
+          <div className="flex justify-end gap-3 mt-6">
             <button
-              onClick={handleAddQuestion}
+              onClick={handleCancelEdit}
+              className="px-6 py-2 rounded-lg font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveQuestion}
               disabled={!newQ.text || !newQ.className || !newQ.subject || !newQ.chapter}
               className="bg-white text-black px-6 py-2 rounded-lg font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Save Question
+              {editingId ? 'Update Question' : 'Save Question'}
             </button>
           </div>
         </div>
@@ -501,9 +548,14 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
                 <div className="flex-1">
                   <div className="flex items-start justify-between gap-4">
                     <p className="font-medium text-white text-lg">{q.text}</p>
-                    <button onClick={() => handleDelete(q.id)} className="text-zinc-600 hover:text-red-400 transition-colors">
-                      <Trash2 size={18} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => handleEdit(q)} className="text-zinc-600 hover:text-blue-400 transition-colors" title="Edit Question">
+                        <Pencil size={18} />
+                      </button>
+                      <button onClick={() => handleDelete(q.id)} className="text-zinc-600 hover:text-red-400 transition-colors" title="Delete Question">
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
                   </div>
                   <div className="flex gap-2 mt-2 mb-3 flex-wrap">
                     <span className="text-xs font-medium px-2 py-1 bg-zinc-800 text-zinc-300 rounded-md">{q.className}</span>
