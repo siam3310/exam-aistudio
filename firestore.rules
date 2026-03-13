@@ -1,0 +1,144 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users/{userId}
+    // Document ID: User's UID
+    // Fields:
+    //   - uid: string (required, immutable)
+    //   - email: string (required, immutable)
+    //   - displayName: string (optional)
+    //   - photoURL: string (optional)
+    //   - createdAt: timestamp (required, immutable)
+    //
+    // Collection: users/{userId}/questions/{questionId}
+    // Document ID: UUID
+    // Fields:
+    //   - id: string (required, immutable)
+    //   - text: string (required)
+    //   - options: map (required, keys: a,b,c,d)
+    //   - answer: string (required, enum: a,b,c,d)
+    //   - subject: string (required)
+    //   - difficulty: string (required, enum: easy,medium,hard)
+    //   - createdAt: timestamp (required, immutable)
+    //   - authorUid: string (required, immutable)
+    //
+    // Collection: users/{userId}/examConfig/default
+    // Document ID: 'default'
+    // Fields:
+    //   - institutionName: string (required)
+    //   - examName: string (required)
+    //   - subject: string (required)
+    //   - fullMarks: string (required)
+    //   - date: string (required)
+    //   - time: string (required)
+    //   - examQuestions: list of objects (required)
+    //   - updatedAt: timestamp (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid;
+    }
+    
+    function uidNotModified() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == resource.data.uid;
+    }
+    
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+    
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+    
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'createdAt']) &&
+             data.uid is string && data.uid == request.auth.uid &&
+             data.email is string && isValidEmail(data.email) &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 1000)) &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidQuestion(data) {
+      return hasOnlyAllowedFields(['id', 'text', 'options', 'answer', 'subject', 'difficulty', 'createdAt', 'authorUid']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 100 &&
+             data.text is string && data.text.size() > 0 && data.text.size() <= 2000 &&
+             data.options is map && data.options.keys().hasOnly(['a', 'b', 'c', 'd']) &&
+             data.options.a is string && data.options.a.size() <= 500 &&
+             data.options.b is string && data.options.b.size() <= 500 &&
+             data.options.c is string && data.options.c.size() <= 500 &&
+             data.options.d is string && data.options.d.size() <= 500 &&
+             data.answer in ['a', 'b', 'c', 'd'] &&
+             data.subject is string && data.subject.size() > 0 && data.subject.size() <= 100 &&
+             data.difficulty in ['easy', 'medium', 'hard'] &&
+             data.createdAt is timestamp &&
+             data.authorUid is string && data.authorUid == request.auth.uid;
+    }
+
+    function isValidExamConfig(data) {
+      return hasOnlyAllowedFields(['institutionName', 'examName', 'subject', 'fullMarks', 'date', 'time', 'examQuestions', 'updatedAt']) &&
+             data.institutionName is string && data.institutionName.size() <= 200 &&
+             data.examName is string && data.examName.size() <= 200 &&
+             data.subject is string && data.subject.size() <= 200 &&
+             data.fullMarks is string && data.fullMarks.size() <= 50 &&
+             data.date is string && data.date.size() <= 50 &&
+             data.time is string && data.time.size() <= 50 &&
+             data.examQuestions is list && data.examQuestions.size() <= 500 &&
+             data.updatedAt is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && uidUnchanged();
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && uidNotModified() && areImmutableFieldsUnchanged(['uid', 'email', 'createdAt']);
+      
+      match /questions/{questionId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidQuestion(request.resource.data);
+        allow update: if isOwner(userId) && isValidQuestion(request.resource.data) && areImmutableFieldsUnchanged(['id', 'createdAt', 'authorUid']);
+        allow delete: if isOwner(userId);
+      }
+
+      match /examConfig/{configId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && configId == 'default' && isValidExamConfig(request.resource.data);
+        allow update: if isOwner(userId) && configId == 'default' && isValidExamConfig(request.resource.data);
+      }
+    }
+  }
+}

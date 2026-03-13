@@ -1,15 +1,18 @@
 import React, { useState, useMemo } from 'react';
 import { Question } from '../types';
 import { Search, Plus, Filter, CheckCircle2, Circle, Trash2 } from 'lucide-react';
+import { db } from '../firebase';
+import { doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 
 interface QuestionBankProps {
   bank: Question[];
   setBank: React.Dispatch<React.SetStateAction<Question[]>>;
   examQuestions: Question[];
   setExamQuestions: React.Dispatch<React.SetStateAction<Question[]>>;
+  userUid: string;
 }
 
-export default function QuestionBank({ bank, setBank, examQuestions, setExamQuestions }: QuestionBankProps) {
+export default function QuestionBank({ bank, setBank, examQuestions, setExamQuestions, userUid }: QuestionBankProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [subjectFilter, setSubjectFilter] = useState<string>('All');
   const [difficultyFilter, setDifficultyFilter] = useState<string>('All');
@@ -37,16 +40,20 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
     });
   }, [bank, searchTerm, subjectFilter, difficultyFilter]);
 
-  const handleAddQuestion = () => {
+  const handleAddQuestion = async () => {
     if (!newQ.text || !newQ.subject) return;
+    const questionId = crypto.randomUUID();
     const question: Question = {
-      id: crypto.randomUUID(),
+      id: questionId,
       text: newQ.text!,
       options: newQ.options as Question['options'],
       answer: newQ.answer as Question['answer'],
       subject: newQ.subject!,
       difficulty: newQ.difficulty as Question['difficulty'],
+      authorUid: userUid,
     };
+    
+    // Optimistic update
     setBank([question, ...bank]);
     setIsAdding(false);
     setNewQ({
@@ -56,6 +63,18 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
       subject: newQ.subject, // Keep the last used subject
       difficulty: 'medium',
     });
+
+    try {
+      const qRef = doc(db, `users/${userUid}/questions/${questionId}`);
+      await setDoc(qRef, {
+        ...question,
+        createdAt: serverTimestamp()
+      });
+    } catch (error) {
+      console.error("Error adding question:", error);
+      // Revert optimistic update on error
+      setBank(bank.filter(q => q.id !== questionId));
+    }
   };
 
   const toggleExamQuestion = (q: Question) => {
@@ -67,9 +86,20 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
     }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
+    // Optimistic update
+    const previousBank = [...bank];
     setBank(bank.filter(q => q.id !== id));
     setExamQuestions(examQuestions.filter(q => q.id !== id));
+
+    try {
+      const qRef = doc(db, `users/${userUid}/questions/${id}`);
+      await deleteDoc(qRef);
+    } catch (error) {
+      console.error("Error deleting question:", error);
+      // Revert optimistic update on error
+      setBank(previousBank);
+    }
   };
 
   return (

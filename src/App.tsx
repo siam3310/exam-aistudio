@@ -1,25 +1,67 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Editor from './components/Editor';
 import Preview from './components/Preview';
 import QuestionBank from './components/QuestionBank';
 import { ExamDetails, Question } from './types';
-import { FileText, Library, Eye } from 'lucide-react';
+import { FileText, Library, Eye, LogOut, LogIn } from 'lucide-react';
+import { auth, db, googleProvider } from './firebase';
+import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { collection, doc, onSnapshot, setDoc, deleteDoc, query, serverTimestamp } from 'firebase/firestore';
 
-// Sample data to start with
-const initialBank: Question[] = [
-  { id: '1', text: '১. বাংলাদেশের জাতীয় পশুর নাম কি?', options: { a: 'সিংহ', b: 'রয়েল বেঙ্গল টাইগার', c: 'হাতি', d: 'ঘোড়া' }, answer: 'b', subject: 'General Knowledge', difficulty: 'easy' },
-  { id: '2', text: '২. কম্পিউটারের মস্তিষ্ক বলা হয় কোনটিকে?', options: { a: 'মনিটর', b: 'কিবোর্ড', c: 'সিপিইউ (CPU)', d: 'মাউস' }, answer: 'c', subject: 'ICT', difficulty: 'easy' },
-  { id: '3', text: '৩. বাংলাদেশের জাতীয় স্মৃতিসৌধ কোথায় অবস্থিত?', options: { a: 'ঢাকা', b: 'গাজীপুর', c: 'সাভার', d: 'নারায়ণগঞ্জ' }, answer: 'c', subject: 'General Knowledge', difficulty: 'medium' },
-  { id: '4', text: '৪. পৃথিবীর সবচেয়ে বড় মহাসাগর কোনটি?', options: { a: 'আটলান্টিক মহাসাগর', b: 'ভারত মহাসাগর', c: 'আর্কটিক মহাসাগর', d: 'প্রশান্ত মহাসাগর' }, answer: 'd', subject: 'Geography', difficulty: 'medium' },
-  { id: '5', text: '৫. বাংলাদেশের জাতীয় সংগীতের রচয়িতা কে?', options: { a: 'কাজী নজরুল ইসলাম', b: 'রবীন্দ্রনাথ ঠাকুর', c: 'জীবনানন্দ দাশ', d: 'জসীমউদ্দীন' }, answer: 'b', subject: 'Literature', difficulty: 'easy' },
-  { id: '6', text: '৬. কোনটিকে ‘সূর্যোদয়ের দেশ’ বলা হয়?', options: { a: 'চীন', b: 'জাপান', c: 'ভারত', d: 'থাইল্যান্ড' }, answer: 'b', subject: 'Geography', difficulty: 'medium' },
-  { id: '7', text: '৭. বাংলাদেশের প্রধান নদীর নাম কি?', options: { a: 'পদ্মা', b: 'মেঘনা', c: 'যমুনা', d: 'ব্রহ্মপুত্র' }, answer: 'a', subject: 'Geography', difficulty: 'easy' },
-  { id: '8', text: '৮. সৌরজগতের বৃহত্তম গ্রহ কোনটি?', options: { a: 'পৃথিবী', b: 'মঙ্গল', c: 'বৃহস্পতি', d: 'শনি' }, answer: 'c', subject: 'Science', difficulty: 'medium' },
-  { id: '9', text: '৯. বাংলাদেশের স্বাধীনতা দিবস কবে?', options: { a: '১৬ই ডিসেম্বর', b: '২১শে ফেব্রুয়ারি', c: '২৬শে মার্চ', d: '১৪ই এপ্রিল' }, answer: 'c', subject: 'History', difficulty: 'easy' },
-  { id: '10', text: '১০. কোন ভিটামিনের অভাবে রাতকানা রোগ হয়?', options: { a: 'ভিটামিন সি', b: 'ভিটামিন ডি', c: 'ভিটামিন এ', d: 'ভিটামিন বি' }, answer: 'c', subject: 'Science', difficulty: 'hard' },
-];
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 export default function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [view, setView] = useState<'bank' | 'editor' | 'preview'>('bank');
   
   const [examDetails, setExamDetails] = useState<ExamDetails>({
@@ -31,8 +73,172 @@ export default function App() {
     time: '৩০ মিনিট',
   });
 
-  const [bank, setBank] = useState<Question[]>(initialBank);
-  const [examQuestions, setExamQuestions] = useState<Question[]>(initialBank.slice(0, 5));
+  const [bank, setBank] = useState<Question[]>([]);
+  const [examQuestions, setExamQuestions] = useState<Question[]>([]);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      setIsAuthReady(true);
+      
+      if (currentUser) {
+        // Create user profile document if it doesn't exist
+        try {
+          const userRef = doc(db, 'users', currentUser.uid);
+          await setDoc(userRef, {
+            uid: currentUser.uid,
+            email: currentUser.email,
+            displayName: currentUser.displayName,
+            photoURL: currentUser.photoURL,
+            createdAt: serverTimestamp()
+          }, { merge: true });
+        } catch (error) {
+          handleFirestoreError(error, OperationType.WRITE, `users/${currentUser.uid}`);
+        }
+      } else {
+        setBank([]);
+        setExamQuestions([]);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const [remoteConfigStr, setRemoteConfigStr] = useState<string>('');
+
+  useEffect(() => {
+    if (!isAuthReady || !user) return;
+
+    const questionsPath = `users/${user.uid}/questions`;
+    const q = query(collection(db, questionsPath));
+    
+    const unsubscribeQuestions = onSnapshot(q, (snapshot) => {
+      const questionsData: Question[] = [];
+      snapshot.forEach((doc) => {
+        questionsData.push(doc.data() as Question);
+      });
+      setBank(questionsData);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, questionsPath);
+    });
+
+    const configPath = `users/${user.uid}/examConfig/default`;
+    const unsubscribeConfig = onSnapshot(doc(db, configPath), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        
+        // Save stringified version to prevent infinite loops
+        const newRemoteStr = JSON.stringify({
+          examDetails: {
+            institutionName: data.institutionName,
+            examName: data.examName,
+            subject: data.subject,
+            fullMarks: data.fullMarks,
+            date: data.date,
+            time: data.time,
+          },
+          examQuestions: data.examQuestions || []
+        });
+        
+        setRemoteConfigStr(newRemoteStr);
+        
+        setExamDetails({
+          institutionName: data.institutionName,
+          examName: data.examName,
+          subject: data.subject,
+          fullMarks: data.fullMarks,
+          date: data.date,
+          time: data.time,
+        });
+        if (data.examQuestions) {
+          setExamQuestions(data.examQuestions);
+        }
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, configPath);
+    });
+
+    return () => {
+      unsubscribeQuestions();
+      unsubscribeConfig();
+    };
+  }, [isAuthReady, user]);
+
+  // Sync examQuestions when bank changes or when we need to load them
+  // For simplicity, we manage examQuestions locally and save them to config
+  useEffect(() => {
+    if (!isAuthReady || !user) return;
+    
+    const currentLocalStr = JSON.stringify({ examDetails, examQuestions });
+    if (currentLocalStr === remoteConfigStr) return; // Prevent saving if nothing changed locally
+    
+    const saveConfig = async () => {
+      try {
+        const configPath = `users/${user.uid}/examConfig/default`;
+        await setDoc(doc(db, configPath), {
+          ...examDetails,
+          examQuestions: examQuestions,
+          updatedAt: serverTimestamp()
+        });
+        setRemoteConfigStr(currentLocalStr);
+      } catch (error) {
+        // Ignore errors during rapid typing, but log them
+        console.error("Failed to save config", error);
+      }
+    };
+    
+    const timeout = setTimeout(saveConfig, 1000);
+    return () => clearTimeout(timeout);
+  }, [examDetails, examQuestions, isAuthReady, user, remoteConfigStr]);
+
+  const handleLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error('Login failed:', error);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
+  const handleSetBank = async (newBankOrUpdater: React.SetStateAction<Question[]>) => {
+    if (!user) return;
+    
+    // This is a bit tricky because we need to handle both additions and deletions
+    // For now, we'll let QuestionBank handle individual creates/deletes directly
+    // and just update local state for immediate feedback
+    setBank(newBankOrUpdater);
+  };
+
+  if (!isAuthReady) {
+    return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">Loading...</div>;
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-white p-4">
+        <div className="w-16 h-16 rounded-2xl bg-white text-black flex items-center justify-center font-bold text-3xl mb-6">
+          E
+        </div>
+        <h1 className="text-3xl font-bold mb-2">ExamBuilder AI</h1>
+        <p className="text-zinc-400 mb-8 text-center max-w-md">
+          Create, manage, and export professional question papers. Sign in to save your question bank and exams to the cloud.
+        </p>
+        <button
+          onClick={handleLogin}
+          className="flex items-center gap-3 bg-white text-black px-6 py-3 rounded-lg font-medium hover:bg-zinc-200 transition-colors"
+        >
+          <LogIn size={20} />
+          Sign in with Google
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50 font-sans flex flex-col">
@@ -42,35 +248,48 @@ export default function App() {
           <div className="w-8 h-8 rounded-lg bg-white text-black flex items-center justify-center font-bold">
             E
           </div>
-          <span className="text-xl font-bold tracking-tight">ExamBuilder AI</span>
+          <span className="text-xl font-bold tracking-tight hidden sm:inline">ExamBuilder AI</span>
         </div>
-        <div className="flex bg-zinc-950 rounded-lg p-1 border border-zinc-800">
+        <div className="flex bg-zinc-950 rounded-lg p-1 border border-zinc-800 overflow-x-auto">
           <button
             onClick={() => setView('bank')}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
               view === 'bank' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white'
             }`}
           >
             <Library size={16} />
-            Question Bank
+            <span className="hidden sm:inline">Question Bank</span>
           </button>
           <button
             onClick={() => setView('editor')}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
               view === 'editor' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white'
             }`}
           >
             <FileText size={16} />
-            Exam Editor
+            <span className="hidden sm:inline">Exam Editor</span>
           </button>
           <button
             onClick={() => setView('preview')}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
               view === 'preview' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white'
             }`}
           >
             <Eye size={16} />
-            Preview & Export
+            <span className="hidden sm:inline">Preview & Export</span>
+          </button>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="hidden sm:flex items-center gap-2 text-sm text-zinc-400">
+            <img src={user.photoURL || ''} alt="" className="w-6 h-6 rounded-full bg-zinc-800" />
+            <span className="truncate max-w-[100px]">{user.displayName}</span>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+            title="Sign out"
+          >
+            <LogOut size={18} />
           </button>
         </div>
       </nav>
@@ -80,9 +299,10 @@ export default function App() {
         {view === 'bank' && (
           <QuestionBank
             bank={bank}
-            setBank={setBank}
+            setBank={handleSetBank}
             examQuestions={examQuestions}
             setExamQuestions={setExamQuestions}
+            userUid={user.uid}
           />
         )}
         {view === 'editor' && (

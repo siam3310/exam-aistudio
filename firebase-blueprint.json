@@ -1,0 +1,75 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "User ID" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "createdAt"]
+    },
+    "Question": {
+      "title": "Question",
+      "description": "A multiple-choice question",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "text": { "type": "string" },
+        "options": {
+          "type": "object",
+          "properties": {
+            "a": { "type": "string" },
+            "b": { "type": "string" },
+            "c": { "type": "string" },
+            "d": { "type": "string" }
+          },
+          "required": ["a", "b", "c", "d"]
+        },
+        "answer": { "type": "string", "enum": ["a", "b", "c", "d"] },
+        "subject": { "type": "string" },
+        "difficulty": { "type": "string", "enum": ["easy", "medium", "hard"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "authorUid": { "type": "string" }
+      },
+      "required": ["id", "text", "options", "answer", "subject", "difficulty", "createdAt", "authorUid"]
+    },
+    "ExamConfig": {
+      "title": "ExamConfig",
+      "description": "Current exam configuration and selected questions",
+      "type": "object",
+      "properties": {
+        "institutionName": { "type": "string" },
+        "examName": { "type": "string" },
+        "subject": { "type": "string" },
+        "fullMarks": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "examQuestions": {
+          "type": "array",
+          "items": { "$ref": "#/entities/Question" }
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["institutionName", "examName", "subject", "fullMarks", "date", "time", "examQuestions", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles"
+    },
+    "users/{userId}/questions/{questionId}": {
+      "schema": { "$ref": "#/entities/Question" },
+      "description": "Questions created by the user"
+    },
+    "users/{userId}/examConfig/default": {
+      "schema": { "$ref": "#/entities/ExamConfig" },
+      "description": "User's current exam configuration"
+    }
+  }
+}

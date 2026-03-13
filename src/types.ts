@@ -10,6 +10,8 @@ export interface Question {
   answer: 'a' | 'b' | 'c' | 'd';
   subject: string;
   difficulty: 'easy' | 'medium' | 'hard';
+  createdAt?: any; // Firestore Timestamp
+  authorUid?: string;
 }
 
 export interface ExamDetails {
