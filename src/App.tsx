@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import Editor from './components/Editor';
 import Preview from './components/Preview';
 import QuestionBank from './components/QuestionBank';
-import { ExamDetails, Question } from './types';
-import { FileText, Library, Eye, LogOut, LogIn } from 'lucide-react';
+import SavedExams from './components/SavedExams';
+import { ExamDetails, Question, Taxonomy, Exam } from './types';
+import { FileText, Library, Eye, LogOut, LogIn, UserPlus, BookOpen, Save, FolderOpen } from 'lucide-react';
 import { auth, db, googleProvider } from './firebase';
-import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { collection, doc, onSnapshot, setDoc, deleteDoc, query, serverTimestamp } from 'firebase/firestore';
+import { signInWithPopup, signOut, onAuthStateChanged, User, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { collection, doc, onSnapshot, setDoc, deleteDoc, query, serverTimestamp, getDoc } from 'firebase/firestore';
 
 enum OperationType {
   CREATE = 'create',
@@ -62,11 +63,18 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
-  const [view, setView] = useState<'bank' | 'editor' | 'preview'>('bank');
+  const [view, setView] = useState<'bank' | 'editor' | 'preview' | 'saved'>('bank');
   
+  // Auth state
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+
   const [examDetails, setExamDetails] = useState<ExamDetails>({
     institutionName: 'আপনার প্রতিষ্ঠানের নাম দিন',
     examName: 'বার্ষিক পরীক্ষা - ২০২৪',
+    className: 'Class 10',
     subject: 'সাধারণ জ্ঞান (নমুনা)',
     fullMarks: '৩০',
     date: new Date().toLocaleDateString('bn-BD'),
@@ -75,6 +83,7 @@ export default function App() {
 
   const [bank, setBank] = useState<Question[]>([]);
   const [examQuestions, setExamQuestions] = useState<Question[]>([]);
+  const [taxonomy, setTaxonomy] = useState<Taxonomy>({ classes: [], subjects: {}, chapters: {} });
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -85,19 +94,29 @@ export default function App() {
         // Create user profile document if it doesn't exist
         try {
           const userRef = doc(db, 'users', currentUser.uid);
-          await setDoc(userRef, {
-            uid: currentUser.uid,
-            email: currentUser.email,
-            displayName: currentUser.displayName,
-            photoURL: currentUser.photoURL,
-            createdAt: serverTimestamp()
-          }, { merge: true });
+          const userSnap = await getDoc(userRef);
+          if (!userSnap.exists()) {
+            await setDoc(userRef, {
+              uid: currentUser.uid,
+              email: currentUser.email,
+              displayName: currentUser.displayName || currentUser.email?.split('@')[0],
+              photoURL: currentUser.photoURL,
+              createdAt: serverTimestamp()
+            });
+          } else {
+            // Update display name and photo URL if they changed
+            await setDoc(userRef, {
+              displayName: currentUser.displayName || currentUser.email?.split('@')[0],
+              photoURL: currentUser.photoURL,
+            }, { merge: true });
+          }
         } catch (error) {
           handleFirestoreError(error, OperationType.WRITE, `users/${currentUser.uid}`);
         }
       } else {
         setBank([]);
         setExamQuestions([]);
+        setTaxonomy({ classes: [], subjects: {}, chapters: {} });
       }
     });
     return () => unsubscribe();
@@ -131,6 +150,7 @@ export default function App() {
           examDetails: {
             institutionName: data.institutionName,
             examName: data.examName,
+            className: data.className || '',
             subject: data.subject,
             fullMarks: data.fullMarks,
             date: data.date,
@@ -144,6 +164,7 @@ export default function App() {
         setExamDetails({
           institutionName: data.institutionName,
           examName: data.examName,
+          className: data.className || '',
           subject: data.subject,
           fullMarks: data.fullMarks,
           date: data.date,
@@ -157,9 +178,22 @@ export default function App() {
       handleFirestoreError(error, OperationType.GET, configPath);
     });
 
+    const taxonomyPath = `users/${user.uid}/settings/taxonomy`;
+    const unsubscribeTaxonomy = onSnapshot(doc(db, taxonomyPath), (docSnap) => {
+      if (docSnap.exists()) {
+        setTaxonomy(docSnap.data() as Taxonomy);
+      } else {
+        // Initialize if not exists
+        setDoc(doc(db, taxonomyPath), { classes: [], subjects: {}, chapters: {} }).catch(e => console.error(e));
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, taxonomyPath);
+    });
+
     return () => {
       unsubscribeQuestions();
       unsubscribeConfig();
+      unsubscribeTaxonomy();
     };
   }, [isAuthReady, user]);
 
@@ -190,11 +224,28 @@ export default function App() {
     return () => clearTimeout(timeout);
   }, [examDetails, examQuestions, isAuthReady, user, remoteConfigStr]);
 
-  const handleLogin = async () => {
+  const handleGoogleLogin = async () => {
     try {
+      setAuthError('');
       await signInWithPopup(auth, googleProvider);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login failed:', error);
+      setAuthError(error.message || 'Google sign in failed');
+    }
+  };
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    try {
+      if (authMode === 'login') {
+        await signInWithEmailAndPassword(auth, email, password);
+      } else {
+        await createUserWithEmailAndPassword(auth, email, password);
+      }
+    } catch (error: any) {
+      console.error('Auth failed:', error);
+      setAuthError(error.message || 'Authentication failed');
     }
   };
 
@@ -208,11 +259,49 @@ export default function App() {
 
   const handleSetBank = async (newBankOrUpdater: React.SetStateAction<Question[]>) => {
     if (!user) return;
-    
-    // This is a bit tricky because we need to handle both additions and deletions
-    // For now, we'll let QuestionBank handle individual creates/deletes directly
-    // and just update local state for immediate feedback
     setBank(newBankOrUpdater);
+  };
+
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleSaveExam = async () => {
+    if (!user) return;
+    const examId = crypto.randomUUID();
+    const newExam: Exam = {
+      id: examId,
+      ...examDetails,
+      examQuestions,
+    };
+    try {
+      await setDoc(doc(db, `users/${user.uid}/exams/${examId}`), {
+        ...newExam,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      showToast('Exam saved successfully!');
+    } catch (error) {
+      console.error('Error saving exam:', error);
+      showToast('Failed to save exam.');
+    }
+  };
+
+  const handleLoadExam = (exam: Exam) => {
+    setExamDetails({
+      institutionName: exam.institutionName,
+      examName: exam.examName,
+      className: exam.className,
+      subject: exam.subject,
+      fullMarks: exam.fullMarks,
+      date: exam.date,
+      time: exam.time,
+    });
+    setExamQuestions(exam.examQuestions || []);
+    setView('editor');
   };
 
   if (!isAuthReady) {
@@ -229,13 +318,62 @@ export default function App() {
         <p className="text-zinc-400 mb-8 text-center max-w-md">
           Create, manage, and export professional question papers. Sign in to save your question bank and exams to the cloud.
         </p>
-        <button
-          onClick={handleLogin}
-          className="flex items-center gap-3 bg-white text-black px-6 py-3 rounded-lg font-medium hover:bg-zinc-200 transition-colors"
-        >
-          <LogIn size={20} />
-          Sign in with Google
-        </button>
+
+        <div className="w-full max-w-sm bg-zinc-900 p-6 rounded-xl border border-zinc-800">
+          <form onSubmit={handleEmailAuth} className="flex flex-col gap-4 mb-6">
+            <div>
+              <label className="block text-sm font-medium text-zinc-400 mb-1">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-zinc-600"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-zinc-400 mb-1">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-zinc-600"
+                required
+              />
+            </div>
+            {authError && <p className="text-red-400 text-sm">{authError}</p>}
+            <button
+              type="submit"
+              className="w-full bg-zinc-800 text-white px-4 py-2 rounded-lg font-medium hover:bg-zinc-700 transition-colors mt-2"
+            >
+              {authMode === 'login' ? 'Sign In' : 'Create Account'}
+            </button>
+          </form>
+
+          <div className="flex items-center gap-4 mb-6">
+            <div className="flex-1 h-px bg-zinc-800"></div>
+            <span className="text-sm text-zinc-500">OR</span>
+            <div className="flex-1 h-px bg-zinc-800"></div>
+          </div>
+
+          <button
+            onClick={handleGoogleLogin}
+            className="w-full flex items-center justify-center gap-3 bg-white text-black px-4 py-2 rounded-lg font-medium hover:bg-zinc-200 transition-colors"
+          >
+            <LogIn size={20} />
+            Continue with Google
+          </button>
+
+          <p className="text-center text-sm text-zinc-500 mt-6">
+            {authMode === 'login' ? "Don't have an account? " : "Already have an account? "}
+            <button
+              onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
+              className="text-white hover:underline"
+            >
+              {authMode === 'login' ? 'Register' : 'Sign In'}
+            </button>
+          </p>
+        </div>
       </div>
     );
   }
@@ -278,11 +416,26 @@ export default function App() {
             <Eye size={16} />
             <span className="hidden sm:inline">Preview & Export</span>
           </button>
+          <button
+            onClick={() => setView('saved')}
+            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+              view === 'saved' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            <FolderOpen size={16} />
+            <span className="hidden sm:inline">Saved Exams</span>
+          </button>
         </div>
         <div className="flex items-center gap-4">
           <div className="hidden sm:flex items-center gap-2 text-sm text-zinc-400">
-            <img src={user.photoURL || ''} alt="" className="w-6 h-6 rounded-full bg-zinc-800" />
-            <span className="truncate max-w-[100px]">{user.displayName}</span>
+            {user.photoURL ? (
+              <img src={user.photoURL} alt="" className="w-6 h-6 rounded-full bg-zinc-800" />
+            ) : (
+              <div className="w-6 h-6 rounded-full bg-zinc-800 flex items-center justify-center text-xs">
+                {user.displayName?.charAt(0) || user.email?.charAt(0) || 'U'}
+              </div>
+            )}
+            <span className="truncate max-w-[100px]">{user.displayName || user.email?.split('@')[0]}</span>
           </div>
           <button
             onClick={handleLogout}
@@ -295,7 +448,12 @@ export default function App() {
       </nav>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto relative">
+        {toastMessage && (
+          <div className="absolute top-4 right-4 bg-zinc-800 text-white px-4 py-2 rounded-lg shadow-lg border border-zinc-700 z-50 animate-in fade-in slide-in-from-top-4">
+            {toastMessage}
+          </div>
+        )}
         {view === 'bank' && (
           <QuestionBank
             bank={bank}
@@ -303,6 +461,7 @@ export default function App() {
             examQuestions={examQuestions}
             setExamQuestions={setExamQuestions}
             userUid={user.uid}
+            taxonomy={taxonomy}
           />
         )}
         {view === 'editor' && (
@@ -312,6 +471,7 @@ export default function App() {
             questions={examQuestions}
             setQuestions={setExamQuestions}
             onPreview={() => setView('preview')}
+            onSave={handleSaveExam}
           />
         )}
         {view === 'preview' && (
@@ -319,6 +479,13 @@ export default function App() {
             examDetails={examDetails}
             questions={examQuestions}
             onBack={() => setView('editor')}
+            onSave={handleSaveExam}
+          />
+        )}
+        {view === 'saved' && (
+          <SavedExams
+            userUid={user.uid}
+            onLoadExam={handleLoadExam}
           />
         )}
       </main>

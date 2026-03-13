@@ -13,6 +13,26 @@
       },
       "required": ["uid", "email", "createdAt"]
     },
+    "Taxonomy": {
+      "title": "Taxonomy",
+      "description": "User's class, subject, and chapter hierarchy",
+      "type": "object",
+      "properties": {
+        "classes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "subjects": {
+          "type": "object",
+          "description": "Map of className to array of subjects"
+        },
+        "chapters": {
+          "type": "object",
+          "description": "Map of className_subject to array of chapters"
+        }
+      },
+      "required": ["classes", "subjects", "chapters"]
+    },
     "Question": {
       "title": "Question",
       "description": "A multiple-choice question",
@@ -31,20 +51,24 @@
           "required": ["a", "b", "c", "d"]
         },
         "answer": { "type": "string", "enum": ["a", "b", "c", "d"] },
+        "className": { "type": "string" },
         "subject": { "type": "string" },
+        "chapter": { "type": "string" },
         "difficulty": { "type": "string", "enum": ["easy", "medium", "hard"] },
         "createdAt": { "type": "string", "format": "date-time" },
         "authorUid": { "type": "string" }
       },
-      "required": ["id", "text", "options", "answer", "subject", "difficulty", "createdAt", "authorUid"]
+      "required": ["id", "text", "options", "answer", "className", "subject", "chapter", "difficulty", "createdAt", "authorUid"]
     },
-    "ExamConfig": {
-      "title": "ExamConfig",
-      "description": "Current exam configuration and selected questions",
+    "Exam": {
+      "title": "Exam",
+      "description": "A saved question paper",
       "type": "object",
       "properties": {
+        "id": { "type": "string" },
         "institutionName": { "type": "string" },
         "examName": { "type": "string" },
+        "className": { "type": "string" },
         "subject": { "type": "string" },
         "fullMarks": { "type": "string" },
         "date": { "type": "string" },
@@ -53,9 +77,10 @@
           "type": "array",
           "items": { "$ref": "#/entities/Question" }
         },
+        "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["institutionName", "examName", "subject", "fullMarks", "date", "time", "examQuestions", "updatedAt"]
+      "required": ["id", "examName", "examQuestions", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -63,13 +88,17 @@
       "schema": { "$ref": "#/entities/User" },
       "description": "User profiles"
     },
+    "users/{userId}/settings/taxonomy": {
+      "schema": { "$ref": "#/entities/Taxonomy" },
+      "description": "User's taxonomy hierarchy"
+    },
     "users/{userId}/questions/{questionId}": {
       "schema": { "$ref": "#/entities/Question" },
       "description": "Questions created by the user"
     },
-    "users/{userId}/examConfig/default": {
-      "schema": { "$ref": "#/entities/ExamConfig" },
-      "description": "User's current exam configuration"
+    "users/{userId}/exams/{examId}": {
+      "schema": { "$ref": "#/entities/Exam" },
+      "description": "Saved question papers"
     }
   }
 }

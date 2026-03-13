@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ExamDetails, Question } from '../types';
-import { Trash2, Settings, FileText } from 'lucide-react';
+import { Trash2, Settings, FileText, Save } from 'lucide-react';
 
 interface EditorProps {
   examDetails: ExamDetails;
@@ -8,9 +8,10 @@ interface EditorProps {
   questions: Question[];
   setQuestions: React.Dispatch<React.SetStateAction<Question[]>>;
   onPreview: () => void;
+  onSave: () => void;
 }
 
-export default function Editor({ examDetails, setExamDetails, questions, setQuestions, onPreview }: EditorProps) {
+export default function Editor({ examDetails, setExamDetails, questions, setQuestions, onPreview, onSave }: EditorProps) {
   const [activeTab, setActiveTab] = useState<'details' | 'questions'>('details');
 
   const handleRemoveQuestion = (id: string) => {
@@ -46,13 +47,22 @@ export default function Editor({ examDetails, setExamDetails, questions, setQues
           <h1 className="text-3xl font-bold text-white tracking-tight">Exam Editor</h1>
           <p className="text-zinc-400 mt-1">Configure exam details and review selected questions</p>
         </div>
-        <button
-          onClick={onPreview}
-          className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-lg font-medium hover:bg-zinc-200 transition-colors"
-        >
-          <FileText size={18} />
-          Preview & Export
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={onSave}
+            className="flex items-center gap-2 bg-zinc-800 text-white px-4 py-2 rounded-lg font-medium hover:bg-zinc-700 transition-colors"
+          >
+            <Save size={18} />
+            Save Exam
+          </button>
+          <button
+            onClick={onPreview}
+            className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-lg font-medium hover:bg-zinc-200 transition-colors"
+          >
+            <FileText size={18} />
+            Preview & Export
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-4 mb-6 border-b border-zinc-800 pb-2">
@@ -97,6 +107,16 @@ export default function Editor({ examDetails, setExamDetails, questions, setQues
                 onChange={(e) => setExamDetails({ ...examDetails, examName: e.target.value })}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-zinc-600"
                 placeholder="e.g. Annual Examination - 2024"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-zinc-400 mb-1">Class</label>
+              <input
+                type="text"
+                value={examDetails.className}
+                onChange={(e) => setExamDetails({ ...examDetails, className: e.target.value })}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-zinc-600"
+                placeholder="e.g. Class 10"
               />
             </div>
             <div>

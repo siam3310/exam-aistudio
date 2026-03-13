@@ -15,6 +15,13 @@ service cloud.firestore {
     //   - photoURL: string (optional)
     //   - createdAt: timestamp (required, immutable)
     //
+    // Collection: users/{userId}/settings/taxonomy
+    // Document ID: 'taxonomy'
+    // Fields:
+    //   - classes: list of strings (required)
+    //   - subjects: map (required)
+    //   - chapters: map (required)
+    //
     // Collection: users/{userId}/questions/{questionId}
     // Document ID: UUID
     // Fields:
@@ -22,21 +29,26 @@ service cloud.firestore {
     //   - text: string (required)
     //   - options: map (required, keys: a,b,c,d)
     //   - answer: string (required, enum: a,b,c,d)
+    //   - className: string (required)
     //   - subject: string (required)
+    //   - chapter: string (required)
     //   - difficulty: string (required, enum: easy,medium,hard)
     //   - createdAt: timestamp (required, immutable)
     //   - authorUid: string (required, immutable)
     //
-    // Collection: users/{userId}/examConfig/default
-    // Document ID: 'default'
+    // Collection: users/{userId}/exams/{examId}
+    // Document ID: UUID
     // Fields:
-    //   - institutionName: string (required)
+    //   - id: string (required, immutable)
+    //   - institutionName: string (optional)
     //   - examName: string (required)
-    //   - subject: string (required)
-    //   - fullMarks: string (required)
-    //   - date: string (required)
-    //   - time: string (required)
+    //   - className: string (optional)
+    //   - subject: string (optional)
+    //   - fullMarks: string (optional)
+    //   - date: string (optional)
+    //   - time: string (optional)
     //   - examQuestions: list of objects (required)
+    //   - createdAt: timestamp (required, immutable)
     //   - updatedAt: timestamp (required)
     //
     // ===============================================================
@@ -84,14 +96,21 @@ service cloud.firestore {
     function isValidUser(data) {
       return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'createdAt']) &&
              data.uid is string && data.uid == request.auth.uid &&
-             data.email is string && isValidEmail(data.email) &&
-             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
-             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 1000)) &&
-             data.createdAt is timestamp;
+             (!('email' in data) || data.email == null || (data.email is string && isValidEmail(data.email))) &&
+             (!('displayName' in data) || data.displayName == null || (data.displayName is string && data.displayName.size() <= 100)) &&
+             (!('photoURL' in data) || data.photoURL == null || (data.photoURL is string && data.photoURL.size() <= 1000)) &&
+             (!('createdAt' in data) || data.createdAt == null || data.createdAt is timestamp);
+    }
+
+    function isValidTaxonomy(data) {
+      return hasOnlyAllowedFields(['classes', 'subjects', 'chapters']) &&
+             data.classes is list && data.classes.size() <= 100 &&
+             data.subjects is map &&
+             data.chapters is map;
     }
 
     function isValidQuestion(data) {
-      return hasOnlyAllowedFields(['id', 'text', 'options', 'answer', 'subject', 'difficulty', 'createdAt', 'authorUid']) &&
+      return hasOnlyAllowedFields(['id', 'text', 'options', 'answer', 'className', 'subject', 'chapter', 'difficulty', 'createdAt', 'authorUid']) &&
              data.id is string && data.id.size() > 0 && data.id.size() <= 100 &&
              data.text is string && data.text.size() > 0 && data.text.size() <= 2000 &&
              data.options is map && data.options.keys().hasOnly(['a', 'b', 'c', 'd']) &&
@@ -100,22 +119,40 @@ service cloud.firestore {
              data.options.c is string && data.options.c.size() <= 500 &&
              data.options.d is string && data.options.d.size() <= 500 &&
              data.answer in ['a', 'b', 'c', 'd'] &&
-             data.subject is string && data.subject.size() > 0 && data.subject.size() <= 100 &&
+             data.className is string && data.className.size() <= 100 &&
+             data.subject is string && data.subject.size() <= 100 &&
+             data.chapter is string && data.chapter.size() <= 100 &&
              data.difficulty in ['easy', 'medium', 'hard'] &&
              data.createdAt is timestamp &&
              data.authorUid is string && data.authorUid == request.auth.uid;
     }
 
-    function isValidExamConfig(data) {
-      return hasOnlyAllowedFields(['institutionName', 'examName', 'subject', 'fullMarks', 'date', 'time', 'examQuestions', 'updatedAt']) &&
-             data.institutionName is string && data.institutionName.size() <= 200 &&
-             data.examName is string && data.examName.size() <= 200 &&
-             data.subject is string && data.subject.size() <= 200 &&
-             data.fullMarks is string && data.fullMarks.size() <= 50 &&
-             data.date is string && data.date.size() <= 50 &&
-             data.time is string && data.time.size() <= 50 &&
+    function isValidExam(data) {
+      return hasOnlyAllowedFields(['id', 'institutionName', 'examName', 'className', 'subject', 'fullMarks', 'date', 'time', 'examQuestions', 'createdAt', 'updatedAt']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 100 &&
+             (!('institutionName' in data) || data.institutionName == null || (data.institutionName is string && data.institutionName.size() <= 200)) &&
+             data.examName is string && data.examName.size() > 0 && data.examName.size() <= 200 &&
+             (!('className' in data) || data.className == null || (data.className is string && data.className.size() <= 100)) &&
+             (!('subject' in data) || data.subject == null || (data.subject is string && data.subject.size() <= 200)) &&
+             (!('fullMarks' in data) || data.fullMarks == null || (data.fullMarks is string && data.fullMarks.size() <= 50)) &&
+             (!('date' in data) || data.date == null || (data.date is string && data.date.size() <= 50)) &&
+             (!('time' in data) || data.time == null || (data.time is string && data.time.size() <= 50)) &&
              data.examQuestions is list && data.examQuestions.size() <= 500 &&
+             data.createdAt is timestamp &&
              data.updatedAt is timestamp;
+    }
+
+    function isValidExamConfig(data) {
+      return hasOnlyAllowedFields(['institutionName', 'examName', 'className', 'subject', 'fullMarks', 'date', 'time', 'examQuestions', 'updatedAt']) &&
+             (!('institutionName' in data) || data.institutionName == null || (data.institutionName is string && data.institutionName.size() <= 200)) &&
+             (!('examName' in data) || data.examName == null || (data.examName is string && data.examName.size() <= 200)) &&
+             (!('className' in data) || data.className == null || (data.className is string && data.className.size() <= 100)) &&
+             (!('subject' in data) || data.subject == null || (data.subject is string && data.subject.size() <= 200)) &&
+             (!('fullMarks' in data) || data.fullMarks == null || (data.fullMarks is string && data.fullMarks.size() <= 50)) &&
+             (!('date' in data) || data.date == null || (data.date is string && data.date.size() <= 50)) &&
+             (!('time' in data) || data.time == null || (data.time is string && data.time.size() <= 50)) &&
+             (!('examQuestions' in data) || data.examQuestions == null || (data.examQuestions is list && data.examQuestions.size() <= 500)) &&
+             (!('updatedAt' in data) || data.updatedAt == null || data.updatedAt is timestamp);
     }
 
     // ===============================================================
@@ -127,6 +164,18 @@ service cloud.firestore {
       allow create: if isOwner(userId) && isValidUser(request.resource.data) && uidUnchanged();
       allow update: if isOwner(userId) && isValidUser(request.resource.data) && uidNotModified() && areImmutableFieldsUnchanged(['uid', 'email', 'createdAt']);
       
+      match /settings/taxonomy {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidTaxonomy(request.resource.data);
+        allow update: if isOwner(userId) && isValidTaxonomy(request.resource.data);
+      }
+
+      match /examConfig/default {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidExamConfig(request.resource.data);
+        allow update: if isOwner(userId) && isValidExamConfig(request.resource.data);
+      }
+
       match /questions/{questionId} {
         allow read: if isOwner(userId);
         allow create: if isOwner(userId) && isValidQuestion(request.resource.data);
@@ -134,10 +183,11 @@ service cloud.firestore {
         allow delete: if isOwner(userId);
       }
 
-      match /examConfig/{configId} {
+      match /exams/{examId} {
         allow read: if isOwner(userId);
-        allow create: if isOwner(userId) && configId == 'default' && isValidExamConfig(request.resource.data);
-        allow update: if isOwner(userId) && configId == 'default' && isValidExamConfig(request.resource.data);
+        allow create: if isOwner(userId) && isValidExam(request.resource.data);
+        allow update: if isOwner(userId) && isValidExam(request.resource.data) && areImmutableFieldsUnchanged(['id', 'createdAt']);
+        allow delete: if isOwner(userId);
       }
     }
   }

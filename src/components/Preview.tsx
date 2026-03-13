@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { ExamDetails, Question } from '../types';
-import { ArrowLeft, Printer, Download, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Printer, Download, Image as ImageIcon, Save } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
@@ -8,9 +8,10 @@ interface PreviewProps {
   examDetails: ExamDetails;
   questions: Question[];
   onBack: () => void;
+  onSave: () => void;
 }
 
-export default function Preview({ examDetails, questions, onBack }: PreviewProps) {
+export default function Preview({ examDetails, questions, onBack, onSave }: PreviewProps) {
   const [view, setView] = useState<'questions' | 'answers'>('questions');
   const paperRef = useRef<HTMLDivElement>(null);
 
@@ -131,6 +132,13 @@ export default function Preview({ examDetails, questions, onBack }: PreviewProps
         
         <div className="flex items-center gap-3">
           <button
+            onClick={onSave}
+            className="flex items-center gap-2 bg-zinc-800 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-zinc-700 transition-colors"
+          >
+            <Save size={16} />
+            Save
+          </button>
+          <button
             onClick={handlePrint}
             className="flex items-center gap-2 bg-zinc-800 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-zinc-700 transition-colors"
           >
@@ -167,6 +175,7 @@ export default function Preview({ examDetails, questions, onBack }: PreviewProps
               <div className="text-center mb-8">
                 <h2 className="text-3xl font-bold mb-1">{examDetails.institutionName || '[Institution Name]'}</h2>
                 <p className="text-xl mb-1">{examDetails.examName || '[Exam Name]'}</p>
+                <p className="text-xl mb-1">শ্রেণি: {examDetails.className || '[Class]'}</p>
                 <p className="text-xl mb-4">বিষয়: {examDetails.subject || '[Subject]'}</p>
                 
                 <div className="flex justify-between items-center text-lg font-semibold border-y border-gray-300 py-3 mt-4">

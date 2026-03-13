@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { Question } from '../types';
-import { Search, Plus, Filter, CheckCircle2, Circle, Trash2 } from 'lucide-react';
+import { Question, Taxonomy } from '../types';
+import { Search, Plus, Filter, CheckCircle2, Circle, Trash2, Settings } from 'lucide-react';
 import { db } from '../firebase';
 import { doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 
@@ -10,45 +10,55 @@ interface QuestionBankProps {
   examQuestions: Question[];
   setExamQuestions: React.Dispatch<React.SetStateAction<Question[]>>;
   userUid: string;
+  taxonomy: Taxonomy;
 }
 
-export default function QuestionBank({ bank, setBank, examQuestions, setExamQuestions, userUid }: QuestionBankProps) {
+export default function QuestionBank({ bank, setBank, examQuestions, setExamQuestions, userUid, taxonomy }: QuestionBankProps) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [classFilter, setClassFilter] = useState<string>('All');
   const [subjectFilter, setSubjectFilter] = useState<string>('All');
+  const [chapterFilter, setChapterFilter] = useState<string>('All');
   const [difficultyFilter, setDifficultyFilter] = useState<string>('All');
   const [isAdding, setIsAdding] = useState(false);
+  const [isManagingTaxonomy, setIsManagingTaxonomy] = useState(false);
 
   const [newQ, setNewQ] = useState<Partial<Question>>({
     text: '',
     options: { a: '', b: '', c: '', d: '' },
     answer: 'a',
+    className: '',
     subject: '',
+    chapter: '',
     difficulty: 'medium',
   });
 
-  const subjects = useMemo(() => {
-    const subs = new Set(bank.map(q => q.subject));
-    return ['All', ...Array.from(subs).filter(Boolean)];
-  }, [bank]);
+  // Taxonomy Management State
+  const [taxClass, setTaxClass] = useState('');
+  const [taxSubject, setTaxSubject] = useState('');
+  const [taxChapter, setTaxChapter] = useState('');
 
   const filteredBank = useMemo(() => {
     return bank.filter(q => {
       const matchesSearch = q.text.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesClass = classFilter === 'All' || q.className === classFilter;
       const matchesSubject = subjectFilter === 'All' || q.subject === subjectFilter;
+      const matchesChapter = chapterFilter === 'All' || q.chapter === chapterFilter;
       const matchesDifficulty = difficultyFilter === 'All' || q.difficulty === difficultyFilter;
-      return matchesSearch && matchesSubject && matchesDifficulty;
+      return matchesSearch && matchesClass && matchesSubject && matchesChapter && matchesDifficulty;
     });
-  }, [bank, searchTerm, subjectFilter, difficultyFilter]);
+  }, [bank, searchTerm, classFilter, subjectFilter, chapterFilter, difficultyFilter]);
 
   const handleAddQuestion = async () => {
-    if (!newQ.text || !newQ.subject) return;
+    if (!newQ.text || !newQ.className || !newQ.subject || !newQ.chapter) return;
     const questionId = crypto.randomUUID();
     const question: Question = {
       id: questionId,
       text: newQ.text!,
       options: newQ.options as Question['options'],
       answer: newQ.answer as Question['answer'],
+      className: newQ.className!,
       subject: newQ.subject!,
+      chapter: newQ.chapter!,
       difficulty: newQ.difficulty as Question['difficulty'],
       authorUid: userUid,
     };
@@ -60,7 +70,9 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
       text: '',
       options: { a: '', b: '', c: '', d: '' },
       answer: 'a',
-      subject: newQ.subject, // Keep the last used subject
+      className: newQ.className,
+      subject: newQ.subject,
+      chapter: newQ.chapter,
       difficulty: 'medium',
     });
 
@@ -102,6 +114,86 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
     }
   };
 
+  const saveTaxonomy = async (newTaxonomy: Taxonomy) => {
+    try {
+      await setDoc(doc(db, `users/${userUid}/settings/taxonomy`), newTaxonomy);
+    } catch (error) {
+      console.error("Error saving taxonomy:", error);
+    }
+  };
+
+  const addClass = () => {
+    if (!taxClass || taxonomy.classes.includes(taxClass)) return;
+    const newTax = { ...taxonomy, classes: [...taxonomy.classes, taxClass] };
+    saveTaxonomy(newTax);
+    setTaxClass('');
+  };
+
+  const addSubject = (className: string) => {
+    if (!taxSubject) return;
+    const currentSubjects = taxonomy.subjects[className] || [];
+    if (currentSubjects.includes(taxSubject)) return;
+    const newTax = {
+      ...taxonomy,
+      subjects: { ...taxonomy.subjects, [className]: [...currentSubjects, taxSubject] }
+    };
+    saveTaxonomy(newTax);
+    setTaxSubject('');
+  };
+
+  const addChapter = (className: string, subjectName: string) => {
+    if (!taxChapter) return;
+    const key = `${className}_${subjectName}`;
+    const currentChapters = taxonomy.chapters[key] || [];
+    if (currentChapters.includes(taxChapter)) return;
+    const newTax = {
+      ...taxonomy,
+      chapters: { ...taxonomy.chapters, [key]: [...currentChapters, taxChapter] }
+    };
+    saveTaxonomy(newTax);
+    setTaxChapter('');
+  };
+
+  const deleteClass = (className: string) => {
+    const newTax = {
+      ...taxonomy,
+      classes: taxonomy.classes.filter(c => c !== className),
+    };
+    // Clean up subjects and chapters
+    const newSubjects = { ...newTax.subjects };
+    delete newSubjects[className];
+    newTax.subjects = newSubjects;
+    
+    const newChapters = { ...newTax.chapters };
+    Object.keys(newChapters).forEach(k => {
+      if (k.startsWith(`${className}_`)) delete newChapters[k];
+    });
+    newTax.chapters = newChapters;
+    
+    saveTaxonomy(newTax);
+  };
+
+  const deleteSubject = (className: string, subjectName: string) => {
+    const newTax = { ...taxonomy };
+    if (newTax.subjects[className]) {
+      newTax.subjects[className] = newTax.subjects[className].filter(s => s !== subjectName);
+    }
+    const key = `${className}_${subjectName}`;
+    if (newTax.chapters[key]) {
+      delete newTax.chapters[key];
+    }
+    saveTaxonomy(newTax);
+  };
+
+  const deleteChapter = (className: string, subjectName: string, chapterName: string) => {
+    const key = `${className}_${subjectName}`;
+    const newTax = { ...taxonomy };
+    if (newTax.chapters[key]) {
+      newTax.chapters[key] = newTax.chapters[key].filter(c => c !== chapterName);
+    }
+    saveTaxonomy(newTax);
+  };
+
   return (
     <div className="max-w-5xl mx-auto p-6">
       <div className="flex items-center justify-between mb-8">
@@ -109,14 +201,93 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
           <h1 className="text-3xl font-bold text-white tracking-tight">Question Bank</h1>
           <p className="text-zinc-400 mt-1">Manage your repository of questions</p>
         </div>
-        <button
-          onClick={() => setIsAdding(!isAdding)}
-          className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-lg font-medium hover:bg-zinc-200 transition-colors"
-        >
-          <Plus size={18} />
-          {isAdding ? 'Cancel' : 'New Question'}
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setIsManagingTaxonomy(!isManagingTaxonomy)}
+            className="flex items-center gap-2 bg-zinc-800 text-white px-4 py-2 rounded-lg font-medium hover:bg-zinc-700 transition-colors"
+          >
+            <Settings size={18} />
+            Manage Classes
+          </button>
+          <button
+            onClick={() => setIsAdding(!isAdding)}
+            className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-lg font-medium hover:bg-zinc-200 transition-colors"
+          >
+            <Plus size={18} />
+            {isAdding ? 'Cancel' : 'New Question'}
+          </button>
+        </div>
       </div>
+
+      {isManagingTaxonomy && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-8">
+          <h2 className="text-xl font-semibold text-white mb-4">Manage Classes, Subjects & Chapters</h2>
+          
+          <div className="flex gap-2 mb-6">
+            <input
+              type="text"
+              value={taxClass}
+              onChange={e => setTaxClass(e.target.value)}
+              placeholder="New Class Name (e.g. Class 10)"
+              className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-zinc-600"
+            />
+            <button onClick={addClass} className="bg-zinc-800 text-white px-4 py-2 rounded-lg hover:bg-zinc-700">Add Class</button>
+          </div>
+
+          <div className="space-y-6">
+            {taxonomy.classes.map(cls => (
+              <div key={cls} className="border border-zinc-800 rounded-lg p-4 bg-zinc-950/50">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-medium text-emerald-400">{cls}</h3>
+                  <button onClick={() => deleteClass(cls)} className="text-zinc-500 hover:text-red-400"><Trash2 size={16}/></button>
+                </div>
+                
+                <div className="flex gap-2 mb-4">
+                  <input
+                    type="text"
+                    value={taxSubject}
+                    onChange={e => setTaxSubject(e.target.value)}
+                    placeholder={`New Subject for ${cls}`}
+                    className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-zinc-600"
+                  />
+                  <button onClick={() => addSubject(cls)} className="bg-zinc-800 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-zinc-700">Add Subject</button>
+                </div>
+
+                <div className="space-y-4 pl-4 border-l border-zinc-800">
+                  {(taxonomy.subjects[cls] || []).map(sub => (
+                    <div key={sub} className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <h4 className="text-md font-medium text-amber-400">{sub}</h4>
+                        <button onClick={() => deleteSubject(cls, sub)} className="text-zinc-500 hover:text-red-400"><Trash2 size={14}/></button>
+                      </div>
+                      
+                      <div className="flex gap-2 mb-2">
+                        <input
+                          type="text"
+                          value={taxChapter}
+                          onChange={e => setTaxChapter(e.target.value)}
+                          placeholder={`New Chapter for ${sub}`}
+                          className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1 text-sm text-white focus:outline-none focus:border-zinc-600"
+                        />
+                        <button onClick={() => addChapter(cls, sub)} className="bg-zinc-800 text-white px-3 py-1 rounded-lg text-sm hover:bg-zinc-700">Add Chapter</button>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 pl-4">
+                        {(taxonomy.chapters[`${cls}_${sub}`] || []).map(chap => (
+                          <div key={chap} className="flex items-center gap-1 bg-zinc-800 px-2 py-1 rounded-md text-xs text-zinc-300">
+                            <span>{chap}</span>
+                            <button onClick={() => deleteChapter(cls, sub, chap)} className="text-zinc-500 hover:text-red-400 ml-1"><Trash2 size={12}/></button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {isAdding && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-8 space-y-4">
@@ -133,14 +304,39 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
               />
             </div>
             <div>
+              <label className="block text-sm font-medium text-zinc-400 mb-1">Class</label>
+              <select
+                value={newQ.className}
+                onChange={(e) => setNewQ({ ...newQ, className: e.target.value, subject: '', chapter: '' })}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-zinc-600 appearance-none"
+              >
+                <option value="">Select Class</option>
+                {taxonomy.classes.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
               <label className="block text-sm font-medium text-zinc-400 mb-1">Subject</label>
-              <input
-                type="text"
+              <select
                 value={newQ.subject}
-                onChange={(e) => setNewQ({ ...newQ, subject: e.target.value })}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-zinc-600"
-                placeholder="e.g. Mathematics"
-              />
+                onChange={(e) => setNewQ({ ...newQ, subject: e.target.value, chapter: '' })}
+                disabled={!newQ.className}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-zinc-600 appearance-none disabled:opacity-50"
+              >
+                <option value="">Select Subject</option>
+                {(newQ.className ? taxonomy.subjects[newQ.className] || [] : []).map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-zinc-400 mb-1">Chapter</label>
+              <select
+                value={newQ.chapter}
+                onChange={(e) => setNewQ({ ...newQ, chapter: e.target.value })}
+                disabled={!newQ.subject}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-zinc-600 appearance-none disabled:opacity-50"
+              >
+                <option value="">Select Chapter</option>
+                {(newQ.className && newQ.subject ? taxonomy.chapters[`${newQ.className}_${newQ.subject}`] || [] : []).map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-zinc-400 mb-1">Difficulty</label>
@@ -184,7 +380,7 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
           <div className="flex justify-end mt-6">
             <button
               onClick={handleAddQuestion}
-              disabled={!newQ.text || !newQ.subject}
+              disabled={!newQ.text || !newQ.className || !newQ.subject || !newQ.chapter}
               className="bg-white text-black px-6 py-2 rounded-lg font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Save Question
@@ -193,8 +389,8 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
         </div>
       )}
 
-      <div className="flex flex-col md:flex-row gap-4 mb-6">
-        <div className="relative flex-1">
+      <div className="flex flex-col md:flex-row gap-4 mb-6 flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
           <input
             type="text"
@@ -204,17 +400,33 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
             className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:border-zinc-600"
           />
         </div>
-        <div className="flex gap-4">
-          <div className="relative">
-            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
-            <select
-              value={subjectFilter}
-              onChange={(e) => setSubjectFilter(e.target.value)}
-              className="bg-zinc-900 border border-zinc-800 rounded-lg pl-10 pr-8 py-2 text-white focus:outline-none focus:border-zinc-600 appearance-none min-w-[150px]"
-            >
-              {subjects.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
+        <div className="flex gap-4 flex-wrap">
+          <select
+            value={classFilter}
+            onChange={(e) => { setClassFilter(e.target.value); setSubjectFilter('All'); setChapterFilter('All'); }}
+            className="bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-zinc-600 appearance-none min-w-[120px]"
+          >
+            <option value="All">All Classes</option>
+            {taxonomy.classes.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select
+            value={subjectFilter}
+            onChange={(e) => { setSubjectFilter(e.target.value); setChapterFilter('All'); }}
+            disabled={classFilter === 'All'}
+            className="bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-zinc-600 appearance-none min-w-[120px] disabled:opacity-50"
+          >
+            <option value="All">All Subjects</option>
+            {(classFilter !== 'All' ? taxonomy.subjects[classFilter] || [] : []).map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select
+            value={chapterFilter}
+            onChange={(e) => setChapterFilter(e.target.value)}
+            disabled={subjectFilter === 'All'}
+            className="bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-zinc-600 appearance-none min-w-[120px] disabled:opacity-50"
+          >
+            <option value="All">All Chapters</option>
+            {(classFilter !== 'All' && subjectFilter !== 'All' ? taxonomy.chapters[`${classFilter}_${subjectFilter}`] || [] : []).map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
           <select
             value={difficultyFilter}
             onChange={(e) => setDifficultyFilter(e.target.value)}
@@ -251,8 +463,10 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
                       <Trash2 size={18} />
                     </button>
                   </div>
-                  <div className="flex gap-2 mt-2 mb-3">
+                  <div className="flex gap-2 mt-2 mb-3 flex-wrap">
+                    <span className="text-xs font-medium px-2 py-1 bg-zinc-800 text-zinc-300 rounded-md">{q.className}</span>
                     <span className="text-xs font-medium px-2 py-1 bg-zinc-800 text-zinc-300 rounded-md">{q.subject}</span>
+                    <span className="text-xs font-medium px-2 py-1 bg-zinc-800 text-zinc-300 rounded-md">{q.chapter}</span>
                     <span className={`text-xs font-medium px-2 py-1 rounded-md ${
                       q.difficulty === 'easy' ? 'bg-emerald-500/10 text-emerald-400' :
                       q.difficulty === 'medium' ? 'bg-amber-500/10 text-amber-400' :
