@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { Question, Taxonomy } from '../types';
-import { Search, Plus, Filter, CheckCircle2, Circle, Trash2, Settings } from 'lucide-react';
+import { Search, Plus, Filter, CheckCircle2, Circle, Trash2, Settings, Sparkles } from 'lucide-react';
 import { db } from '../firebase';
 import { doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import AIGenerator from './AIGenerator';
 
 interface QuestionBankProps {
   bank: Question[];
@@ -21,6 +22,7 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
   const [difficultyFilter, setDifficultyFilter] = useState<string>('All');
   const [isAdding, setIsAdding] = useState(false);
   const [isManagingTaxonomy, setIsManagingTaxonomy] = useState(false);
+  const [isAIGeneratorOpen, setIsAIGeneratorOpen] = useState(false);
 
   const [newQ, setNewQ] = useState<Partial<Question>>({
     text: '',
@@ -194,6 +196,30 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
     saveTaxonomy(newTax);
   };
 
+  const handleAddMultipleQuestions = async (questions: Question[]) => {
+    // Optimistic update
+    setBank(prev => [...questions, ...prev]);
+    
+    // Save to Firestore
+    try {
+      const promises = questions.map(q => {
+        const qRef = doc(db, `users/${userUid}/questions/${q.id}`);
+        return setDoc(qRef, {
+          ...q,
+          createdAt: serverTimestamp()
+        });
+      });
+      await Promise.all(promises);
+    } catch (error) {
+      console.error("Error adding generated questions:", error);
+      // Revert optimistic update on error by refetching or just removing the added ones
+      // For simplicity, we'll let the onSnapshot listener handle the sync eventually, 
+      // but a proper rollback would filter out the new IDs.
+      const newIds = new Set(questions.map(q => q.id));
+      setBank(prev => prev.filter(q => !newIds.has(q.id)));
+    }
+  };
+
   return (
     <div className="max-w-5xl mx-auto p-6">
       <div className="flex items-center justify-between mb-8">
@@ -210,6 +236,13 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
             Manage Classes
           </button>
           <button
+            onClick={() => setIsAIGeneratorOpen(true)}
+            className="flex items-center gap-2 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-4 py-2 rounded-lg font-medium hover:bg-emerald-600/30 transition-colors"
+          >
+            <Sparkles size={18} />
+            Generate with AI
+          </button>
+          <button
             onClick={() => setIsAdding(!isAdding)}
             className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-lg font-medium hover:bg-zinc-200 transition-colors"
           >
@@ -218,6 +251,15 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
           </button>
         </div>
       </div>
+
+      {isAIGeneratorOpen && (
+        <AIGenerator
+          taxonomy={taxonomy}
+          userUid={userUid}
+          onAddQuestions={handleAddMultipleQuestions}
+          onClose={() => setIsAIGeneratorOpen(false)}
+        />
+      )}
 
       {isManagingTaxonomy && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-8">

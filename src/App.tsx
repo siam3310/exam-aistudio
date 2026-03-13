@@ -3,8 +3,9 @@ import Editor from './components/Editor';
 import Preview from './components/Preview';
 import QuestionBank from './components/QuestionBank';
 import SavedExams from './components/SavedExams';
+import Dashboard from './components/Dashboard';
 import { ExamDetails, Question, Taxonomy, Exam } from './types';
-import { FileText, Library, Eye, LogOut, LogIn, UserPlus, BookOpen, Save, FolderOpen } from 'lucide-react';
+import { FileText, Library, Eye, LogOut, LogIn, UserPlus, BookOpen, Save, FolderOpen, LayoutDashboard } from 'lucide-react';
 import { auth, db, googleProvider } from './firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { collection, doc, onSnapshot, setDoc, deleteDoc, query, serverTimestamp, getDoc } from 'firebase/firestore';
@@ -63,7 +64,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
-  const [view, setView] = useState<'bank' | 'editor' | 'preview' | 'saved'>('bank');
+  const [view, setView] = useState<'dashboard' | 'bank' | 'editor' | 'preview' | 'saved'>('dashboard');
   
   // Auth state
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -390,6 +391,15 @@ export default function App() {
         </div>
         <div className="flex bg-zinc-950 rounded-lg p-1 border border-zinc-800 overflow-x-auto">
           <button
+            onClick={() => setView('dashboard')}
+            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+              view === 'dashboard' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            <LayoutDashboard size={16} />
+            <span className="hidden sm:inline">Dashboard</span>
+          </button>
+          <button
             onClick={() => setView('bank')}
             className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
               view === 'bank' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white'
@@ -453,6 +463,16 @@ export default function App() {
           <div className="absolute top-4 right-4 bg-zinc-800 text-white px-4 py-2 rounded-lg shadow-lg border border-zinc-700 z-50 animate-in fade-in slide-in-from-top-4">
             {toastMessage}
           </div>
+        )}
+        {view === 'dashboard' && (
+          <Dashboard
+            userUid={user.uid}
+            userName={user.displayName || user.email?.split('@')[0] || 'Teacher'}
+            bank={bank}
+            taxonomy={taxonomy}
+            onNavigate={setView}
+            onLoadExam={handleLoadExam}
+          />
         )}
         {view === 'bank' && (
           <QuestionBank
