@@ -81,6 +81,9 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
         throw new Error('API_KEY_MISSING');
       }
       const ai = new GoogleGenAI({ apiKey });
+      const totalRequested = selectedBoards.length * selectedYears.length * 10; // Aim for 10 per combination
+      const targetCount = Math.min(Math.max(totalRequested, 50), 100);
+
       const prompt = `Act as a Bangladesh Education Board Question Expert and Curriculum Specialist. 
       Generate a comprehensive and exhaustive set of MCQ questions for ${selectedClass} ${selectedSubject}.
       The questions should be sourced from or inspired by ${selectedImportTypes.join(', ')} questions from the following years: ${selectedYears.join(', ')} for the following Boards: ${selectedBoards.join(', ')}.
@@ -91,7 +94,7 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
       3. Structure: Each question must have 4 options (a, b, c, d) and 1 correct answer.
       4. Variety: Include questions from ALL chapters and difficulty levels (easy, medium, hard).
       5. Metadata: Identify which specific Board and Year each question is likely from.
-      6. Quantity: Generate as many unique questions as possible to cover the selected boards and years comprehensively (aim for 50-100 questions if possible).
+      6. Quantity: Generate EXACTLY ${targetCount} unique questions. This is CRITICAL. Do not stop at 20. I need a full set of ${targetCount} questions to cover the selected ${selectedBoards.length} boards and ${selectedYears.length} years.
       
       Format the output as a JSON array of objects.`;
 
@@ -100,6 +103,7 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
         contents: prompt,
         config: {
           responseMimeType: "application/json",
+          maxOutputTokens: 8192, // Increase token limit for large sets
           responseSchema: {
             type: Type.ARRAY,
             items: {
@@ -394,19 +398,21 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
 
           <button
             onClick={handleImport}
-            disabled={loading || !selectedClass || !selectedSubject}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20"
+            disabled={loading || !selectedClass || !selectedSubject || selectedYears.length === 0 || selectedBoards.length === 0}
+            className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-bold py-4 rounded-xl transition-all flex flex-col items-center justify-center gap-1 shadow-lg shadow-emerald-900/20"
           >
-            {loading ? (
-              <>
+            <div className="flex items-center gap-2">
+              {loading ? (
                 <Loader2 size={20} className="animate-spin" />
-                Fetching Board Questions...
-              </>
-            ) : (
-              <>
+              ) : (
                 <Sparkles size={20} />
-                Fetch Historical Questions
-              </>
+              )}
+              <span>{loading ? 'Fetching Questions...' : 'Fetch Board Questions'}</span>
+            </div>
+            {!loading && (
+              <span className="text-[10px] opacity-60 font-medium uppercase tracking-widest">
+                Targeting ~{Math.min(Math.max(selectedBoards.length * selectedYears.length * 10, 50), 100)} Questions
+              </span>
             )}
           </button>
         </div>

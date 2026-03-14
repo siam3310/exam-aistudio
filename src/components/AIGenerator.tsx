@@ -110,6 +110,7 @@ export default function AIGenerator({ taxonomy, userUid, onAddQuestions, onUpdat
         contents: prompt,
         config: {
           responseMimeType: "application/json",
+          maxOutputTokens: 8192,
           responseSchema: {
             type: Type.ARRAY,
             items: {
