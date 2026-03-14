@@ -82,15 +82,16 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
       }
       const ai = new GoogleGenAI({ apiKey });
       const prompt = `Act as a Bangladesh Education Board Question Expert and Curriculum Specialist. 
-      Generate a comprehensive set of MCQ questions (at least 20-30) for ${selectedClass} ${selectedSubject}.
+      Generate a comprehensive and exhaustive set of MCQ questions for ${selectedClass} ${selectedSubject}.
       The questions should be sourced from or inspired by ${selectedImportTypes.join(', ')} questions from the following years: ${selectedYears.join(', ')} for the following Boards: ${selectedBoards.join(', ')}.
       
       Requirements:
       1. Language: Bengali (Unicode).
       2. Content: Must be accurate to the Bangladesh National Curriculum (NCTB).
       3. Structure: Each question must have 4 options (a, b, c, d) and 1 correct answer.
-      4. Variety: Include questions from different chapters and difficulty levels (easy, medium, hard).
+      4. Variety: Include questions from ALL chapters and difficulty levels (easy, medium, hard).
       5. Metadata: Identify which specific Board and Year each question is likely from.
+      6. Quantity: Generate as many unique questions as possible to cover the selected boards and years comprehensively (aim for 50-100 questions if possible).
       
       Format the output as a JSON array of objects.`;
 

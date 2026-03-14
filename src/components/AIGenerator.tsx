@@ -309,6 +309,10 @@ export default function AIGenerator({ taxonomy, userUid, onAddQuestions, onUpdat
                     <option value={5}>5 Questions</option>
                     <option value={10}>10 Questions</option>
                     <option value={15}>15 Questions</option>
+                    <option value={20}>20 Questions</option>
+                    <option value={30}>30 Questions</option>
+                    <option value={50}>50 Questions</option>
+                    <option value={100}>100 Questions (Max)</option>
                   </select>
                 </div>
                 <div>

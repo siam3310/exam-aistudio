@@ -416,15 +416,16 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
   };
 
   return (
-    <div className="max-w-5xl mx-auto p-6">
+    <div className="max-w-7xl mx-auto p-6">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">Question Bank</h1>
-          <div className="flex items-center gap-4 mt-1">
+          <h1 className="text-4xl font-bold text-white tracking-tight">Question Bank</h1>
+          <div className="flex items-center gap-4 mt-2">
             <p className="text-zinc-400">Manage your repository of questions</p>
             <div className="h-4 w-[1px] bg-zinc-800" />
             <div className="flex gap-3 text-[10px] font-bold uppercase tracking-wider">
-              <span className="text-emerald-400">{stats.easy} Easy</span>
+              <span className="text-emerald-400">{stats.total} Total</span>
+              <span className="text-blue-400">{stats.easy} Easy</span>
               <span className="text-amber-400">{stats.medium} Medium</span>
               <span className="text-red-400">{stats.hard} Hard</span>
             </div>
@@ -433,36 +434,14 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
         <div className="flex gap-3">
           <button
             onClick={() => setIsManagingTaxonomy(!isManagingTaxonomy)}
-            className="flex items-center gap-2 bg-zinc-800 text-white px-4 py-2 rounded-lg font-medium hover:bg-zinc-700 transition-colors"
+            className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 text-white px-4 py-2 rounded-xl font-medium hover:bg-zinc-800 transition-colors"
           >
             <Settings size={18} />
-            Manage Classes
-          </button>
-          <button
-            onClick={findDuplicates}
-            className="flex items-center gap-2 bg-zinc-800 text-zinc-400 px-4 py-2 rounded-lg font-medium hover:bg-zinc-700 hover:text-white transition-colors"
-            title="Find duplicate questions"
-          >
-            <Database size={18} />
-            Find Duplicates
-          </button>
-          <button
-            onClick={() => onNavigate('board-importer')}
-            className="flex items-center gap-2 bg-blue-600/20 text-blue-400 border border-blue-500/30 px-4 py-2 rounded-lg font-medium hover:bg-blue-600/30 transition-colors"
-          >
-            <Download size={18} />
-            Board Questions
-          </button>
-          <button
-            onClick={() => onNavigate('ai-generator')}
-            className="flex items-center gap-2 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-4 py-2 rounded-lg font-medium hover:bg-emerald-600/30 transition-colors"
-          >
-            <Sparkles size={18} />
-            Generate with AI
+            Taxonomy
           </button>
           <button
             onClick={() => isAdding ? handleCancelEdit() : setIsAdding(true)}
-            className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-lg font-medium hover:bg-zinc-200 transition-colors"
+            className="flex items-center gap-2 bg-white text-black px-5 py-2.5 rounded-xl font-bold hover:bg-zinc-200 transition-all shadow-lg"
           >
             <Plus size={18} />
             {isAdding ? 'Cancel' : 'New Question'}
@@ -470,9 +449,102 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
         </div>
       </div>
 
-      {/* Modals removed as they are now separate pages */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* Hierarchical Sidebar */}
+        <div className="lg:col-span-3 space-y-6">
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 backdrop-blur-sm">
+            <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2 mb-4">Curriculum Filter</h3>
+            <div className="space-y-1">
+              <button
+                onClick={() => { setClassFilter('All'); setSubjectFilter('All'); setChapterFilter('All'); }}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                  classFilter === 'All' ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                }`}
+              >
+                All Questions
+              </button>
+              
+              {taxonomy.classes.map(cls => (
+                <div key={cls} className="space-y-1">
+                  <button
+                    onClick={() => { setClassFilter(cls); setSubjectFilter('All'); setChapterFilter('All'); }}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-between ${
+                      classFilter === cls ? 'text-emerald-400' : 'text-zinc-500 hover:text-white'
+                    }`}
+                  >
+                    {cls}
+                    <ChevronDown size={14} className={classFilter === cls ? 'rotate-180 transition-transform' : ''} />
+                  </button>
+                  
+                  {classFilter === cls && (
+                    <div className="pl-4 space-y-1 pb-2">
+                      {(taxonomy.subjects[cls] || []).map(sub => (
+                        <button
+                          key={sub}
+                          onClick={() => { setSubjectFilter(sub); setChapterFilter('All'); }}
+                          className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                            subjectFilter === sub ? 'bg-zinc-800 text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'
+                          }`}
+                        >
+                          {sub}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
 
-      {isManagingTaxonomy && (
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 backdrop-blur-sm">
+            <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2 mb-4">Difficulty</h3>
+            <div className="flex flex-wrap gap-2">
+              {['All', 'easy', 'medium', 'hard'].map(d => (
+                <button
+                  key={d}
+                  onClick={() => setDifficultyFilter(d)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all border ${
+                    difficultyFilter === d 
+                      ? 'bg-emerald-600 border-emerald-500 text-white' 
+                      : 'bg-zinc-950 border-zinc-800 text-zinc-500 hover:border-zinc-700'
+                  }`}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Main Content */}
+        <div className="lg:col-span-9 space-y-6">
+          {/* Search and Sort */}
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={20} />
+              <input
+                type="text"
+                placeholder="Search questions by text..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-12 pr-4 py-3 text-white focus:outline-none focus:border-emerald-500/50 transition-all"
+              />
+            </div>
+            <div className="flex gap-2">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500/50 transition-all appearance-none text-sm font-medium"
+              >
+                <option value="newest">Newest First</option>
+                <option value="oldest">Oldest First</option>
+                <option value="difficulty">By Difficulty</option>
+                <option value="subject">By Subject</option>
+              </select>
+            </div>
+          </div>
+
+          {isManagingTaxonomy && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-white">Manage Classes, Subjects & Chapters</h2>
@@ -659,82 +731,34 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
         </div>
       )}
 
-      <div className="flex flex-col md:flex-row gap-4 mb-6 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search questions..."
-            className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:border-zinc-600"
-          />
-        </div>
-        <div className="flex gap-4 flex-wrap items-center">
-          <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
-            <Filter size={16} className="text-zinc-500" />
-            <select
-              value={classFilter}
-              onChange={(e) => { setClassFilter(e.target.value); setSubjectFilter('All'); setChapterFilter('All'); }}
-              className="bg-transparent text-white text-sm focus:outline-none appearance-none min-w-[100px]"
-            >
-              <option value="All">All Classes</option>
-              {taxonomy.classes.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
-            <select
-              value={subjectFilter}
-              onChange={(e) => { setSubjectFilter(e.target.value); setChapterFilter('All'); }}
-              disabled={classFilter === 'All'}
-              className="bg-transparent text-white text-sm focus:outline-none appearance-none min-w-[100px] disabled:opacity-50"
-            >
-              <option value="All">All Subjects</option>
-              {(classFilter !== 'All' ? taxonomy.subjects[classFilter] || [] : []).map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
-            <select
-              value={difficultyFilter}
-              onChange={(e) => setDifficultyFilter(e.target.value)}
-              className="bg-transparent text-white text-sm focus:outline-none appearance-none min-w-[100px]"
-            >
-              <option value="All">All Difficulties</option>
-              <option value="easy">Easy</option>
-              <option value="medium">Medium</option>
-              <option value="hard">Hard</option>
-            </select>
-          </div>
-          <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
-            <span className="text-xs text-zinc-500 font-bold uppercase">Sort:</span>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
-              className="bg-transparent text-white text-sm focus:outline-none appearance-none min-w-[100px]"
-            >
-              <option value="newest">Newest First</option>
-              <option value="oldest">Oldest First</option>
-              <option value="difficulty">Difficulty</option>
-              <option value="subject">Subject</option>
-            </select>
-          </div>
           {(classFilter !== 'All' || subjectFilter !== 'All' || chapterFilter !== 'All' || difficultyFilter !== 'All' || searchTerm) && (
-            <button 
-              onClick={() => {
-                setClassFilter('All');
-                setSubjectFilter('All');
-                setChapterFilter('All');
-                setDifficultyFilter('All');
-                setSearchTerm('');
-              }}
-              className="text-xs text-zinc-500 hover:text-white flex items-center gap-1 transition-colors"
-            >
-              <X size={14} />
-              Clear Filters
-            </button>
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-xs text-zinc-500 font-bold uppercase">Active Filters:</span>
+              <div className="flex flex-wrap gap-2">
+                {classFilter !== 'All' && (
+                  <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-bold px-2 py-1 rounded-md uppercase">Class: {classFilter}</span>
+                )}
+                {subjectFilter !== 'All' && (
+                  <span className="bg-blue-500/10 text-blue-400 text-[10px] font-bold px-2 py-1 rounded-md uppercase">Subject: {subjectFilter}</span>
+                )}
+                {difficultyFilter !== 'All' && (
+                  <span className="bg-amber-500/10 text-amber-400 text-[10px] font-bold px-2 py-1 rounded-md uppercase">Difficulty: {difficultyFilter}</span>
+                )}
+                <button 
+                  onClick={() => {
+                    setClassFilter('All');
+                    setSubjectFilter('All');
+                    setChapterFilter('All');
+                    setDifficultyFilter('All');
+                    setSearchTerm('');
+                  }}
+                  className="text-[10px] font-bold text-red-400 hover:text-red-300 uppercase underline underline-offset-2"
+                >
+                  Clear All
+                </button>
+              </div>
+            </div>
           )}
-        </div>
-      </div>
 
       {/* Bulk Actions Bar */}
       {selectedIds.size > 0 && (
@@ -870,6 +894,8 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
             );
           })
         )}
+      </div>
+        </div>
       </div>
     </div>
   );

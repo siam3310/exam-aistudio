@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Exam, Question, Taxonomy } from '../types';
 import { db } from '../firebase';
 import { collection, query, onSnapshot, orderBy, limit, doc, setDoc } from 'firebase/firestore';
-import { BookOpen, FileText, Library, Users, Sparkles, ArrowRight, Plus, Database, Download } from 'lucide-react';
+import { BookOpen, FileText, Library, Users, Sparkles, ArrowRight, Plus, Database, Download, Search, ChevronRight, Pencil } from 'lucide-react';
 import { defaultTaxonomy } from '../data/defaultTaxonomy';
 
 interface DashboardProps {
@@ -17,13 +17,12 @@ interface DashboardProps {
 export default function Dashboard({ userUid, userName, bank, taxonomy, onNavigate, onLoadExam }: DashboardProps) {
   const [recentExams, setRecentExams] = useState<Exam[]>([]);
   const [totalExams, setTotalExams] = useState(0);
+  const [selectedClass, setSelectedClass] = useState<string | null>(null);
 
   useEffect(() => {
     const examsPath = `users/${userUid}/exams`;
     const q = query(collection(db, examsPath), orderBy('createdAt', 'desc'), limit(3));
     
-    // We also need total exams count, but for simplicity we'll just use the recent ones if it's small,
-    // or we can do a separate query. Let's just do a general query for count.
     const qAll = query(collection(db, examsPath));
     
     const unsubscribeRecent = onSnapshot(q, (snapshot) => {
@@ -57,187 +56,296 @@ export default function Dashboard({ userUid, userName, bank, taxonomy, onNavigat
     }
   };
 
+  const getSubjectStats = (className: string, subjectName: string) => {
+    const questions = bank.filter(q => q.className === className && q.subject === subjectName);
+    return {
+      count: questions.length,
+      easy: questions.filter(q => q.difficulty === 'easy').length,
+      medium: questions.filter(q => q.difficulty === 'medium').length,
+      hard: questions.filter(q => q.difficulty === 'hard').length,
+    };
+  };
+
   return (
-    <div className="max-w-5xl mx-auto p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white tracking-tight">Welcome back, {userName}!</h1>
-        <p className="text-zinc-400 mt-1">Manage your institution's question papers and classes from your dashboard.</p>
+    <div className="max-w-7xl mx-auto p-6">
+      <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-4xl font-bold text-white tracking-tight">Welcome back, {userName}!</h1>
+          <p className="text-zinc-400 mt-2 text-lg">Your hierarchical curriculum management dashboard.</p>
+        </div>
+        <div className="flex gap-3">
+          <button 
+            onClick={() => onNavigate('editor')}
+            className="flex items-center gap-2 bg-white text-black px-5 py-2.5 rounded-xl font-bold hover:bg-zinc-200 transition-all shadow-lg"
+          >
+            <Plus size={18} />
+            New Exam
+          </button>
+        </div>
       </div>
 
       {/* Stats Grid */}
-      {totalClasses === 0 && (
-        <div className="bg-emerald-600/10 border border-emerald-500/20 rounded-xl p-6 mb-8 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-              <Database size={24} />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-white">Initialize Your Database</h3>
-              <p className="text-zinc-400 text-sm">Your question bank is empty. Seed it with the Bangladesh National Curriculum (Class 1-HSC).</p>
-            </div>
-          </div>
-          <button 
-            onClick={handleSeedData}
-            className="bg-emerald-500 text-white px-6 py-2 rounded-xl font-bold hover:bg-emerald-400 transition-all shadow-lg shadow-emerald-500/20"
-          >
-            Seed Database Now
-          </button>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 flex flex-col">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 backdrop-blur-sm">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-zinc-400 font-medium">Total Questions</h3>
-            <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center">
-              <Library size={18} />
-            </div>
+            <h3 className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Total Questions</h3>
+            <Library size={18} className="text-blue-400" />
           </div>
-          <span className="text-3xl font-bold text-white">{bank.length}</span>
+          <div className="flex items-baseline gap-2">
+            <span className="text-4xl font-bold text-white">{bank.length}</span>
+            <span className="text-zinc-500 text-sm">items</span>
+          </div>
         </div>
         
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 flex flex-col">
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 backdrop-blur-sm">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-zinc-400 font-medium">Saved Exams</h3>
-            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
-              <FileText size={18} />
-            </div>
+            <h3 className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Saved Exams</h3>
+            <FileText size={18} className="text-emerald-400" />
           </div>
-          <span className="text-3xl font-bold text-white">{totalExams}</span>
+          <div className="flex items-baseline gap-2">
+            <span className="text-4xl font-bold text-white">{totalExams}</span>
+            <span className="text-zinc-500 text-sm">papers</span>
+          </div>
         </div>
 
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 flex flex-col">
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 backdrop-blur-sm">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-zinc-400 font-medium">Classes Managed</h3>
-            <div className="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center">
-              <Users size={18} />
-            </div>
+            <h3 className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Classes</h3>
+            <Users size={18} className="text-purple-400" />
           </div>
-          <span className="text-3xl font-bold text-white">{totalClasses}</span>
+          <div className="flex items-baseline gap-2">
+            <span className="text-4xl font-bold text-white">{totalClasses}</span>
+            <span className="text-zinc-500 text-sm">levels</span>
+          </div>
         </div>
 
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 flex flex-col">
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 backdrop-blur-sm">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-zinc-400 font-medium">Subjects</h3>
-            <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
-              <BookOpen size={18} />
-            </div>
+            <h3 className="text-zinc-500 font-bold text-xs uppercase tracking-widest">Subjects</h3>
+            <BookOpen size={18} className="text-amber-400" />
           </div>
-          <span className="text-3xl font-bold text-white">{totalSubjects}</span>
+          <div className="flex items-baseline gap-2">
+            <span className="text-4xl font-bold text-white">{totalSubjects}</span>
+            <span className="text-zinc-500 text-sm">courses</span>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Quick Actions */}
-        <div className="lg:col-span-1 space-y-4">
-          <h2 className="text-xl font-semibold text-white mb-4">Quick Actions</h2>
-          
-          <button 
-            onClick={() => onNavigate('editor')}
-            className="w-full flex items-center justify-between bg-zinc-900 border border-zinc-800 hover:border-zinc-700 p-4 rounded-xl transition-colors group"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-white text-black flex items-center justify-center">
-                <Plus size={20} />
-              </div>
-              <div className="text-left">
-                <h3 className="font-medium text-white group-hover:text-zinc-200">Create New Exam</h3>
-                <p className="text-xs text-zinc-500">Start a blank question paper</p>
-              </div>
-            </div>
-            <ArrowRight size={18} className="text-zinc-600 group-hover:text-white transition-colors" />
-          </button>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* Hierarchical Curriculum Explorer */}
+        <div className="lg:col-span-8 space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+              <Database size={24} className="text-emerald-400" />
+              Curriculum Explorer
+            </h2>
+            {totalClasses === 0 && (
+              <button 
+                onClick={handleSeedData}
+                className="text-xs font-bold text-emerald-400 hover:text-emerald-300 uppercase tracking-wider flex items-center gap-1"
+              >
+                <Plus size={14} />
+                Seed Curriculum
+              </button>
+            )}
+          </div>
 
-          <button 
-            onClick={() => onNavigate('ai-generator')}
-            className="w-full flex items-center justify-between bg-zinc-900 border border-zinc-800 hover:border-zinc-700 p-4 rounded-xl transition-colors group"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
-                <Sparkles size={20} />
+          <div className="bg-zinc-900/30 border border-zinc-800 rounded-3xl overflow-hidden backdrop-blur-md">
+            <div className="grid grid-cols-1 md:grid-cols-12 min-h-[500px]">
+              {/* Classes Sidebar */}
+              <div className="md:col-span-4 border-r border-zinc-800 bg-zinc-900/50 p-4 space-y-2">
+                <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2 mb-4">Select Class</h3>
+                {taxonomy.classes.length === 0 ? (
+                  <p className="text-zinc-600 text-sm italic px-2">No classes found.</p>
+                ) : (
+                  taxonomy.classes.map(c => (
+                    <button
+                      key={c}
+                      onClick={() => setSelectedClass(c)}
+                      className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${
+                        selectedClass === c 
+                          ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20' 
+                          : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                      }`}
+                    >
+                      <span className="font-medium">{c}</span>
+                      <ArrowRight size={16} className={selectedClass === c ? 'opacity-100' : 'opacity-0'} />
+                    </button>
+                  ))
+                )}
               </div>
-              <div className="text-left">
-                <h3 className="font-medium text-white group-hover:text-zinc-200">AI Generator</h3>
-                <p className="text-xs text-zinc-500">Create custom MCQs with AI</p>
-              </div>
-            </div>
-            <ArrowRight size={18} className="text-zinc-600 group-hover:text-white transition-colors" />
-          </button>
 
-          <button 
-            onClick={() => onNavigate('board-importer')}
-            className="w-full flex items-center justify-between bg-zinc-900 border border-zinc-800 hover:border-zinc-700 p-4 rounded-xl transition-colors group"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center">
-                <Download size={20} />
-              </div>
-              <div className="text-left">
-                <h3 className="font-medium text-white group-hover:text-zinc-200">Board Importer</h3>
-                <p className="text-xs text-zinc-500">Import historical board questions</p>
-              </div>
-            </div>
-            <ArrowRight size={18} className="text-zinc-600 group-hover:text-white transition-colors" />
-          </button>
+              {/* Subjects Content */}
+              <div className="md:col-span-8 p-6">
+                {!selectedClass ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
+                    <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-600">
+                      <ArrowRight size={32} className="rotate-180" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-white">Select a Class</h3>
+                      <p className="text-zinc-500 text-sm max-w-xs">Pick a class from the left to explore subjects and question statistics.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-2xl font-bold text-white">{selectedClass} Subjects</h3>
+                      <span className="text-xs font-bold text-zinc-500 bg-zinc-800 px-3 py-1 rounded-full uppercase tracking-wider">
+                        {taxonomy.subjects[selectedClass]?.length || 0} Subjects
+                      </span>
+                    </div>
 
-          <button 
-            onClick={() => onNavigate('saved')}
-            className="w-full flex items-center justify-between bg-zinc-900 border border-zinc-800 hover:border-zinc-700 p-4 rounded-xl transition-colors group"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-zinc-800 text-zinc-300 flex items-center justify-center">
-                <Library size={20} />
-              </div>
-              <div className="text-left">
-                <h3 className="font-medium text-white group-hover:text-zinc-200">Browse Library</h3>
-                <p className="text-xs text-zinc-500">View all saved exams</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {(taxonomy.subjects[selectedClass] || []).map(s => {
+                        const stats = getSubjectStats(selectedClass, s);
+                        return (
+                          <div key={s} className="bg-zinc-950 border border-zinc-800 rounded-2xl p-5 hover:border-zinc-700 transition-all group">
+                            <div className="flex items-start justify-between mb-4">
+                              <h4 className="font-bold text-white text-lg group-hover:text-emerald-400 transition-colors">{s}</h4>
+                              <div className="w-8 h-8 rounded-lg bg-zinc-900 flex items-center justify-center text-zinc-500">
+                                <BookOpen size={16} />
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-4 mb-4">
+                              <div className="flex-1">
+                                <div className="flex justify-between text-[10px] font-bold text-zinc-500 uppercase mb-1">
+                                  <span>Questions</span>
+                                  <span>{stats.count}</span>
+                                </div>
+                                <div className="h-1.5 bg-zinc-900 rounded-full overflow-hidden">
+                                  <div 
+                                    className="h-full bg-emerald-500 rounded-full" 
+                                    style={{ width: `${Math.min(100, (stats.count / 50) * 100)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2 text-center">
+                              <div className="bg-zinc-900/50 rounded-lg py-2">
+                                <p className="text-[10px] font-bold text-zinc-600 uppercase">Easy</p>
+                                <p className="text-sm font-bold text-emerald-400">{stats.easy}</p>
+                              </div>
+                              <div className="bg-zinc-900/50 rounded-lg py-2">
+                                <p className="text-[10px] font-bold text-zinc-600 uppercase">Med</p>
+                                <p className="text-sm font-bold text-amber-400">{stats.medium}</p>
+                              </div>
+                              <div className="bg-zinc-900/50 rounded-lg py-2">
+                                <p className="text-[10px] font-bold text-zinc-600 uppercase">Hard</p>
+                                <p className="text-sm font-bold text-red-400">{stats.hard}</p>
+                              </div>
+                            </div>
+
+                            <div className="mt-4 pt-4 border-t border-zinc-900 flex gap-2">
+                              <button 
+                                onClick={() => onNavigate('ai-generator')}
+                                className="flex-1 text-[10px] font-bold text-emerald-400 hover:text-emerald-300 uppercase py-2 text-center border border-emerald-500/20 rounded-lg hover:bg-emerald-500/5 transition-all"
+                              >
+                                AI Gen
+                              </button>
+                              <button 
+                                onClick={() => onNavigate('board-importer')}
+                                className="flex-1 text-[10px] font-bold text-blue-400 hover:text-blue-300 uppercase py-2 text-center border border-blue-500/20 rounded-lg hover:bg-blue-500/5 transition-all"
+                              >
+                                Import
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-            <ArrowRight size={18} className="text-zinc-600 group-hover:text-white transition-colors" />
-          </button>
+          </div>
         </div>
 
-        {/* Recent Exams */}
-        <div className="lg:col-span-2">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-white">Recent Exams</h2>
-            <button 
-              onClick={() => onNavigate('saved')}
-              className="text-sm text-zinc-400 hover:text-white transition-colors"
-            >
-              View All
-            </button>
-          </div>
-          
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-            {recentExams.length === 0 ? (
-              <div className="p-8 text-center text-zinc-500">
-                No exams created yet. Click "Create New Exam" to get started.
-              </div>
-            ) : (
-              <div className="divide-y divide-zinc-800">
-                {recentExams.map((exam) => (
-                  <div key={exam.id} className="p-4 hover:bg-zinc-800/50 transition-colors flex items-center justify-between">
-                    <div>
-                      <h3 className="font-medium text-white">{exam.examName || 'Untitled Exam'}</h3>
-                      <div className="flex items-center gap-2 text-xs text-zinc-500 mt-1">
-                        <span>{exam.className}</span>
+        {/* Right Sidebar: Recent & Quick */}
+        <div className="lg:col-span-4 space-y-8">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold text-white">Recent Exams</h2>
+              <button 
+                onClick={() => onNavigate('saved')}
+                className="text-xs font-bold text-zinc-500 hover:text-white uppercase tracking-wider"
+              >
+                View All
+              </button>
+            </div>
+            
+            <div className="space-y-3">
+              {recentExams.length === 0 ? (
+                <div className="bg-zinc-900/50 border border-zinc-800 border-dashed rounded-2xl p-8 text-center">
+                  <p className="text-zinc-500 text-sm italic">No exams created yet.</p>
+                </div>
+              ) : (
+                recentExams.map((exam) => (
+                  <div key={exam.id} className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 hover:bg-zinc-900 transition-all flex items-center justify-between group">
+                    <div className="min-w-0">
+                      <h3 className="font-bold text-white truncate group-hover:text-emerald-400 transition-colors">{exam.examName || 'Untitled Exam'}</h3>
+                      <div className="flex items-center gap-2 text-[10px] font-bold text-zinc-500 uppercase mt-1">
+                        <span className="truncate max-w-[80px]">{exam.className}</span>
                         <span>•</span>
-                        <span>{exam.subject}</span>
-                        <span>•</span>
-                        <span>{exam.date}</span>
+                        <span className="truncate max-w-[80px]">{exam.subject}</span>
                       </div>
                     </div>
                     <button
                       onClick={() => onLoadExam(exam)}
-                      className="px-3 py-1.5 bg-zinc-800 text-white text-sm rounded-lg hover:bg-zinc-700 transition-colors"
+                      className="w-8 h-8 rounded-lg bg-zinc-800 text-zinc-400 flex items-center justify-center hover:bg-white hover:text-black transition-all"
                     >
-                      Edit
+                      <Pencil size={14} />
                     </button>
                   </div>
-                ))}
-              </div>
-            )}
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h2 className="text-xl font-bold text-white">Quick Tools</h2>
+            <div className="grid grid-cols-1 gap-3">
+              <button 
+                onClick={() => onNavigate('ai-generator')}
+                className="flex items-center gap-4 bg-emerald-600/10 border border-emerald-500/20 p-4 rounded-2xl hover:bg-emerald-600/20 transition-all group"
+              >
+                <div className="w-12 h-12 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-900/40">
+                  <Sparkles size={24} />
+                </div>
+                <div className="text-left">
+                  <h3 className="font-bold text-white">AI Generator</h3>
+                  <p className="text-xs text-emerald-400/70">Create MCQs in seconds</p>
+                </div>
+              </button>
+
+              <button 
+                onClick={() => onNavigate('board-importer')}
+                className="flex items-center gap-4 bg-blue-600/10 border border-blue-500/20 p-4 rounded-2xl hover:bg-blue-600/20 transition-all group"
+              >
+                <div className="w-12 h-12 rounded-xl bg-blue-500 text-white flex items-center justify-center shadow-lg shadow-blue-900/40">
+                  <Download size={24} />
+                </div>
+                <div className="text-left">
+                  <h3 className="font-bold text-white">Board Importer</h3>
+                  <p className="text-xs text-blue-400/70">Fetch historical questions</p>
+                </div>
+              </button>
+
+              <button 
+                onClick={() => onNavigate('bank')}
+                className="flex items-center gap-4 bg-zinc-900 border border-zinc-800 p-4 rounded-2xl hover:bg-zinc-800 transition-all group"
+              >
+                <div className="w-12 h-12 rounded-xl bg-zinc-800 text-zinc-400 flex items-center justify-center">
+                  <Library size={24} />
+                </div>
+                <div className="text-left">
+                  <h3 className="font-bold text-white">Question Bank</h3>
+                  <p className="text-xs text-zinc-500">Manage your collection</p>
+                </div>
+              </button>
+            </div>
           </div>
         </div>
       </div>
