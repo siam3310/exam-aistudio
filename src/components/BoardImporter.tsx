@@ -14,16 +14,25 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
   const [loading, setLoading] = useState(false);
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
-  const [selectedYear, setSelectedYear] = useState('2023');
+  const [selectedYears, setSelectedYears] = useState<string[]>(['2023']);
   const [selectedBoard, setSelectedBoard] = useState('Dhaka');
+  const [importType, setImportType] = useState<'Board' | 'Model Test' | 'Test Exam'>('Board');
   const [generatedQuestions, setGeneratedQuestions] = useState<Question[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const years = Array.from({ length: 10 }, (_, i) => (2024 - i).toString());
+  const years = Array.from({ length: 15 }, (_, i) => (2024 - i).toString());
   const boards = ['Dhaka', 'Comilla', 'Rajshahi', 'Jessore', 'Chittagong', 'Barisal', 'Sylhet', 'Dinajpur', 'Mymensingh', 'Madrasah', 'Technical'];
 
+  const toggleYear = (year: string) => {
+    setSelectedYears(prev => 
+      prev.includes(year) 
+        ? prev.filter(y => y !== year) 
+        : [...prev, year].sort((a, b) => parseInt(b) - parseInt(a))
+    );
+  };
+
   const handleImport = async () => {
-    if (!selectedClass || !selectedSubject) return;
+    if (!selectedClass || !selectedSubject || selectedYears.length === 0) return;
     
     setLoading(true);
     setError(null);
@@ -31,10 +40,17 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
 
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-      const prompt = `Act as a Bangladesh Education Board Question Expert. 
-      Generate 10 real or highly accurate MCQ questions from the ${selectedYear} ${selectedBoard} Board exam for ${selectedClass} ${selectedSubject}.
-      The questions MUST be in Bengali language (Unicode).
-      Each question must have 4 options (a, b, c, d) and a correct answer.
+      const prompt = `Act as a Bangladesh Education Board Question Expert and Curriculum Specialist. 
+      Generate a comprehensive set of MCQ questions (at least 15-20) for ${selectedClass} ${selectedSubject}.
+      The questions should be sourced from or inspired by ${importType} questions from the following years: ${selectedYears.join(', ')} for the ${selectedBoard} Board.
+      
+      Requirements:
+      1. Language: Bengali (Unicode).
+      2. Content: Must be accurate to the Bangladesh National Curriculum (NCTB).
+      3. Structure: Each question must have 4 options (a, b, c, d) and 1 correct answer.
+      4. Variety: Include questions from different chapters and difficulty levels (easy, medium, hard).
+      5. Metadata: Identify which year/source each question is likely from if possible.
+      
       Format the output as a JSON array of objects.`;
 
       const response = await ai.models.generateContent({
@@ -60,7 +76,8 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
                 },
                 answer: { type: Type.STRING, enum: ["a", "b", "c", "d"] },
                 chapter: { type: Type.STRING, description: "Relevant chapter name in Bengali" },
-                difficulty: { type: Type.STRING, enum: ["easy", "medium", "hard"] }
+                difficulty: { type: Type.STRING, enum: ["easy", "medium", "hard"] },
+                sourceYear: { type: Type.STRING, description: "The year this question is from" }
               },
               required: ["text", "options", "answer", "chapter", "difficulty"]
             }
@@ -80,15 +97,19 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
         difficulty: q.difficulty || 'medium',
         authorUid: userUid,
         metadata: {
-          source: `${selectedBoard} Board ${selectedYear}`,
+          source: `${selectedBoard} ${importType} ${q.sourceYear || selectedYears[0]}`,
           isHistorical: true
         }
       }));
 
       setGeneratedQuestions(formattedQuestions);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError("Failed to fetch questions. Please try again.");
+      if (err.message?.includes('API_KEY_INVALID')) {
+        setError("Invalid API Key. Please check your Gemini API key in settings.");
+      } else {
+        setError("Failed to fetch questions. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -117,50 +138,96 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Class</label>
-              <select
-                value={selectedClass}
-                onChange={(e) => setSelectedClass(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500/50 transition-colors appearance-none"
-              >
-                <option value="">Select Class</option>
-                {taxonomy.classes.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+        <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(100vh-200px)] custom-scrollbar">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Class</label>
+                <select
+                  value={selectedClass}
+                  onChange={(e) => setSelectedClass(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500/50 transition-colors appearance-none"
+                >
+                  <option value="">Select Class</option>
+                  {taxonomy.classes.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Subject</label>
+                <select
+                  value={selectedSubject}
+                  onChange={(e) => setSelectedSubject(e.target.value)}
+                  disabled={!selectedClass}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500/50 transition-colors appearance-none disabled:opacity-50"
+                >
+                  <option value="">Select Subject</option>
+                  {(selectedClass ? taxonomy.subjects[selectedClass] || [] : []).map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Import Type</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['Board', 'Model Test', 'Test Exam'] as const).map(type => (
+                    <button
+                      key={type}
+                      onClick={() => setImportType(type)}
+                      className={`px-3 py-2 rounded-lg text-xs font-bold transition-all border ${
+                        importType === type 
+                          ? 'bg-emerald-600 border-emerald-500 text-white' 
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                      }`}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Board</label>
+                <select
+                  value={selectedBoard}
+                  onChange={(e) => setSelectedBoard(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500/50 transition-colors appearance-none"
+                >
+                  {boards.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
             </div>
+
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Subject</label>
-              <select
-                value={selectedSubject}
-                onChange={(e) => setSelectedSubject(e.target.value)}
-                disabled={!selectedClass}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500/50 transition-colors appearance-none disabled:opacity-50"
-              >
-                <option value="">Select Subject</option>
-                {(selectedClass ? taxonomy.subjects[selectedClass] || [] : []).map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Year</label>
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500/50 transition-colors appearance-none"
-              >
-                {years.map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Board</label>
-              <select
-                value={selectedBoard}
-                onChange={(e) => setSelectedBoard(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500/50 transition-colors appearance-none"
-              >
-                {boards.map(b => <option key={b} value={b}>{b}</option>)}
-              </select>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Select Years (Multiple)</label>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setSelectedYears(years)}
+                    className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold uppercase"
+                  >
+                    Select All
+                  </button>
+                  <button 
+                    onClick={() => setSelectedYears([])}
+                    className="text-[10px] text-zinc-500 hover:text-zinc-400 font-bold uppercase"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 bg-zinc-950 border border-zinc-800 rounded-xl p-3 max-h-[280px] overflow-y-auto custom-scrollbar">
+                {years.map(y => (
+                  <button
+                    key={y}
+                    onClick={() => toggleYear(y)}
+                    className={`px-2 py-2 rounded-lg text-xs font-medium transition-all border ${
+                      selectedYears.includes(y)
+                        ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400'
+                        : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700'
+                    }`}
+                  >
+                    {y}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-zinc-500 mt-1 italic">Click to select/deselect multiple years</p>
             </div>
           </div>
 
