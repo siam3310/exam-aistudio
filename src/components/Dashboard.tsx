@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Exam, Question, Taxonomy } from '../types';
 import { db } from '../firebase';
-import { collection, query, onSnapshot, orderBy, limit } from 'firebase/firestore';
-import { BookOpen, FileText, Library, Users, Sparkles, ArrowRight, Plus } from 'lucide-react';
+import { collection, query, onSnapshot, orderBy, limit, doc, setDoc } from 'firebase/firestore';
+import { BookOpen, FileText, Library, Users, Sparkles, ArrowRight, Plus, Database } from 'lucide-react';
+import { defaultTaxonomy } from '../data/defaultTaxonomy';
 
 interface DashboardProps {
   userUid: string;
@@ -46,6 +47,16 @@ export default function Dashboard({ userUid, userName, bank, taxonomy, onNavigat
   const totalClasses = taxonomy.classes.length;
   const totalSubjects = Object.values(taxonomy.subjects).reduce((acc, curr) => acc + curr.length, 0);
 
+  const handleSeedData = async () => {
+    try {
+      await setDoc(doc(db, `users/${userUid}/settings/taxonomy`), defaultTaxonomy);
+      alert('Database seeded with Bangladesh National Curriculum data successfully!');
+    } catch (error) {
+      console.error('Error seeding data:', error);
+      alert('Failed to seed data.');
+    }
+  };
+
   return (
     <div className="max-w-5xl mx-auto p-6">
       <div className="mb-8">
@@ -54,6 +65,26 @@ export default function Dashboard({ userUid, userName, bank, taxonomy, onNavigat
       </div>
 
       {/* Stats Grid */}
+      {totalClasses === 0 && (
+        <div className="bg-emerald-600/10 border border-emerald-500/20 rounded-xl p-6 mb-8 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+              <Database size={24} />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-white">Initialize Your Database</h3>
+              <p className="text-zinc-400 text-sm">Your question bank is empty. Seed it with the Bangladesh National Curriculum (Class 1-HSC).</p>
+            </div>
+          </div>
+          <button 
+            onClick={handleSeedData}
+            className="bg-emerald-500 text-white px-6 py-2 rounded-xl font-bold hover:bg-emerald-400 transition-all shadow-lg shadow-emerald-500/20"
+          >
+            Seed Database Now
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 flex flex-col">
           <div className="flex items-center justify-between mb-4">

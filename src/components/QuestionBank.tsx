@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { Question, Taxonomy } from '../types';
-import { Search, Plus, Filter, CheckCircle2, Circle, Trash2, Settings, Sparkles, Pencil, Download } from 'lucide-react';
+import { Search, Plus, Filter, CheckCircle2, Circle, Trash2, Settings, Sparkles, Pencil, Download, Database } from 'lucide-react';
 import { db } from '../firebase';
 import { doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import AIGenerator from './AIGenerator';
 import BoardImporter from './BoardImporter';
+import { defaultTaxonomy } from '../data/defaultTaxonomy';
 
 interface QuestionBankProps {
   bank: Question[];
@@ -237,6 +238,12 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
     saveTaxonomy(newTax);
   };
 
+  const handleImportDefaultTaxonomy = () => {
+    if (window.confirm('This will replace your current classes, subjects, and chapters with the default Bangladesh National Curriculum data. Continue?')) {
+      saveTaxonomy(defaultTaxonomy);
+    }
+  };
+
   const handleAddMultipleQuestions = async (questions: Question[]) => {
     // Optimistic update
     setBank(prev => [...questions, ...prev]);
@@ -320,7 +327,16 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
 
       {isManagingTaxonomy && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-8">
-          <h2 className="text-xl font-semibold text-white mb-4">Manage Classes, Subjects & Chapters</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-white">Manage Classes, Subjects & Chapters</h2>
+            <button
+              onClick={handleImportDefaultTaxonomy}
+              className="flex items-center gap-2 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-emerald-600/30 transition-colors"
+            >
+              <Database size={14} />
+              Import Default Curriculum
+            </button>
+          </div>
           
           <div className="flex gap-2 mb-6">
             <input
