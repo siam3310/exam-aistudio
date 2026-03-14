@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Exam, Question, Taxonomy } from '../types';
 import { db } from '../firebase';
 import { collection, query, onSnapshot, orderBy, limit } from 'firebase/firestore';
-import { BookOpen, FileText, Library, Users, Sparkles, ArrowRight } from 'lucide-react';
+import { BookOpen, FileText, Library, Users, Sparkles, ArrowRight, Plus } from 'lucide-react';
 
 interface DashboardProps {
   userUid: string;

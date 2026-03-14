@@ -380,134 +380,142 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-50 font-sans flex flex-col">
-      {/* Top Navigation */}
-      <nav className="bg-zinc-900 border-b border-zinc-800 px-6 py-4 flex items-center justify-between shadow-sm no-print">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-white text-black flex items-center justify-center font-bold">
+    <div className="min-h-screen bg-zinc-950 text-zinc-50 font-sans flex flex-col md:flex-row">
+      {/* Sidebar Navigation */}
+      <aside className="w-full md:w-64 bg-zinc-900 border-r border-zinc-800 flex flex-col no-print">
+        <div className="p-6 flex items-center gap-3 border-b border-zinc-800">
+          <div className="w-10 h-10 rounded-xl bg-white text-black flex items-center justify-center font-bold text-xl shadow-lg">
             E
           </div>
-          <span className="text-xl font-bold tracking-tight hidden sm:inline">ExamBuilder AI</span>
+          <span className="text-xl font-bold tracking-tight">ExamBuilder</span>
         </div>
-        <div className="flex bg-zinc-950 rounded-lg p-1 border border-zinc-800 overflow-x-auto">
+        
+        <div className="flex-1 p-4 space-y-2 overflow-y-auto">
           <button
             onClick={() => setView('dashboard')}
-            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
-              view === 'dashboard' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white'
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+              view === 'dashboard' ? 'bg-white text-black shadow-lg shadow-white/5' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
             }`}
           >
-            <LayoutDashboard size={16} />
-            <span className="hidden sm:inline">Dashboard</span>
+            <LayoutDashboard size={18} />
+            Dashboard
           </button>
           <button
             onClick={() => setView('bank')}
-            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
-              view === 'bank' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white'
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+              view === 'bank' ? 'bg-white text-black shadow-lg shadow-white/5' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
             }`}
           >
-            <Library size={16} />
-            <span className="hidden sm:inline">Question Bank</span>
+            <Library size={18} />
+            Question Bank
           </button>
           <button
             onClick={() => setView('editor')}
-            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
-              view === 'editor' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white'
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+              view === 'editor' ? 'bg-white text-black shadow-lg shadow-white/5' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
             }`}
           >
-            <FileText size={16} />
-            <span className="hidden sm:inline">Exam Editor</span>
+            <FileText size={18} />
+            Exam Editor
           </button>
           <button
             onClick={() => setView('preview')}
-            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
-              view === 'preview' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white'
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+              view === 'preview' ? 'bg-white text-black shadow-lg shadow-white/5' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
             }`}
           >
-            <Eye size={16} />
-            <span className="hidden sm:inline">Preview & Export</span>
+            <Eye size={18} />
+            Preview & Export
           </button>
           <button
             onClick={() => setView('saved')}
-            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
-              view === 'saved' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white'
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+              view === 'saved' ? 'bg-white text-black shadow-lg shadow-white/5' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
             }`}
           >
-            <FolderOpen size={16} />
-            <span className="hidden sm:inline">Saved Exams</span>
+            <FolderOpen size={18} />
+            Saved Exams
           </button>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="hidden sm:flex items-center gap-2 text-sm text-zinc-400">
+
+        <div className="p-4 border-t border-zinc-800">
+          <div className="flex items-center gap-3 p-3 bg-zinc-950 rounded-xl border border-zinc-800 mb-3">
             {user.photoURL ? (
-              <img src={user.photoURL} alt="" className="w-6 h-6 rounded-full bg-zinc-800" />
+              <img src={user.photoURL} alt="" className="w-8 h-8 rounded-full ring-2 ring-zinc-800" />
             ) : (
-              <div className="w-6 h-6 rounded-full bg-zinc-800 flex items-center justify-center text-xs">
+              <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-bold">
                 {user.displayName?.charAt(0) || user.email?.charAt(0) || 'U'}
               </div>
             )}
-            <span className="truncate max-w-[100px]">{user.displayName || user.email?.split('@')[0]}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-white truncate">{user.displayName || user.email?.split('@')[0]}</p>
+              <p className="text-xs text-zinc-500 truncate">{user.email}</p>
+            </div>
           </div>
           <button
             onClick={handleLogout}
-            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
-            title="Sign out"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 text-zinc-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all text-sm font-medium"
           >
-            <LogOut size={18} />
+            <LogOut size={16} />
+            Sign Out
           </button>
         </div>
-      </nav>
+      </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto relative">
+      <main className="flex-1 overflow-y-auto relative bg-zinc-950">
         {toastMessage && (
-          <div className="absolute top-4 right-4 bg-zinc-800 text-white px-4 py-2 rounded-lg shadow-lg border border-zinc-700 z-50 animate-in fade-in slide-in-from-top-4">
+          <div className="fixed top-6 right-6 bg-zinc-800 text-white px-6 py-3 rounded-xl shadow-2xl border border-zinc-700 z-50 animate-in fade-in slide-in-from-top-4 flex items-center gap-3">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             {toastMessage}
           </div>
         )}
-        {view === 'dashboard' && (
-          <Dashboard
-            userUid={user.uid}
-            userName={user.displayName || user.email?.split('@')[0] || 'Teacher'}
-            bank={bank}
-            taxonomy={taxonomy}
-            onNavigate={setView}
-            onLoadExam={handleLoadExam}
-          />
-        )}
-        {view === 'bank' && (
-          <QuestionBank
-            bank={bank}
-            setBank={handleSetBank}
-            examQuestions={examQuestions}
-            setExamQuestions={setExamQuestions}
-            userUid={user.uid}
-            taxonomy={taxonomy}
-          />
-        )}
-        {view === 'editor' && (
-          <Editor
-            examDetails={examDetails}
-            setExamDetails={setExamDetails}
-            questions={examQuestions}
-            setQuestions={setExamQuestions}
-            onPreview={() => setView('preview')}
-            onSave={handleSaveExam}
-          />
-        )}
-        {view === 'preview' && (
-          <Preview
-            examDetails={examDetails}
-            questions={examQuestions}
-            onBack={() => setView('editor')}
-            onSave={handleSaveExam}
-          />
-        )}
-        {view === 'saved' && (
-          <SavedExams
-            userUid={user.uid}
-            onLoadExam={handleLoadExam}
-          />
-        )}
+        <div className="max-w-7xl mx-auto">
+          {view === 'dashboard' && (
+            <Dashboard
+              userUid={user.uid}
+              userName={user.displayName || user.email?.split('@')[0] || 'Teacher'}
+              bank={bank}
+              taxonomy={taxonomy}
+              onNavigate={setView}
+              onLoadExam={handleLoadExam}
+            />
+          )}
+          {view === 'bank' && (
+            <QuestionBank
+              bank={bank}
+              setBank={handleSetBank}
+              examQuestions={examQuestions}
+              setExamQuestions={setExamQuestions}
+              userUid={user.uid}
+              taxonomy={taxonomy}
+            />
+          )}
+          {view === 'editor' && (
+            <Editor
+              examDetails={examDetails}
+              setExamDetails={setExamDetails}
+              questions={examQuestions}
+              setQuestions={setExamQuestions}
+              onPreview={() => setView('preview')}
+              onSave={handleSaveExam}
+            />
+          )}
+          {view === 'preview' && (
+            <Preview
+              examDetails={examDetails}
+              questions={examQuestions}
+              onBack={() => setView('editor')}
+              onSave={handleSaveExam}
+            />
+          )}
+          {view === 'saved' && (
+            <SavedExams
+              userUid={user.uid}
+              onLoadExam={handleLoadExam}
+            />
+          )}
+        </div>
       </main>
     </div>
   );

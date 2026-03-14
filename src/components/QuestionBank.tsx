@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { Question, Taxonomy } from '../types';
-import { Search, Plus, Filter, CheckCircle2, Circle, Trash2, Settings, Sparkles, Pencil } from 'lucide-react';
+import { Search, Plus, Filter, CheckCircle2, Circle, Trash2, Settings, Sparkles, Pencil, Download } from 'lucide-react';
 import { db } from '../firebase';
 import { doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import AIGenerator from './AIGenerator';
+import BoardImporter from './BoardImporter';
 
 interface QuestionBankProps {
   bank: Question[];
@@ -24,6 +25,7 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isManagingTaxonomy, setIsManagingTaxonomy] = useState(false);
   const [isAIGeneratorOpen, setIsAIGeneratorOpen] = useState(false);
+  const [isBoardImporterOpen, setIsBoardImporterOpen] = useState(false);
 
   const [newQ, setNewQ] = useState<Partial<Question>>({
     text: '',
@@ -275,6 +277,13 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
             Manage Classes
           </button>
           <button
+            onClick={() => setIsBoardImporterOpen(true)}
+            className="flex items-center gap-2 bg-blue-600/20 text-blue-400 border border-blue-500/30 px-4 py-2 rounded-lg font-medium hover:bg-blue-600/30 transition-colors"
+          >
+            <Download size={18} />
+            Board Questions
+          </button>
+          <button
             onClick={() => setIsAIGeneratorOpen(true)}
             className="flex items-center gap-2 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-4 py-2 rounded-lg font-medium hover:bg-emerald-600/30 transition-colors"
           >
@@ -297,6 +306,15 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
           userUid={userUid}
           onAddQuestions={handleAddMultipleQuestions}
           onClose={() => setIsAIGeneratorOpen(false)}
+        />
+      )}
+
+      {isBoardImporterOpen && (
+        <BoardImporter
+          taxonomy={taxonomy}
+          userUid={userUid}
+          onAddQuestions={handleAddMultipleQuestions}
+          onClose={() => setIsBoardImporterOpen(false)}
         />
       )}
 
