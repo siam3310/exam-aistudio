@@ -12,6 +12,7 @@ interface BoardImporterProps {
 
 export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClose }: BoardImporterProps) {
   const [loading, setLoading] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedYears, setSelectedYears] = useState<string[]>(['2023']);
@@ -39,7 +40,11 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
     setGeneratedQuestions([]);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error('API_KEY_MISSING');
+      }
+      const ai = new GoogleGenAI({ apiKey });
       const prompt = `Act as a Bangladesh Education Board Question Expert and Curriculum Specialist. 
       Generate a comprehensive set of MCQ questions (at least 15-20) for ${selectedClass} ${selectedSubject}.
       The questions should be sourced from or inspired by ${importType} questions from the following years: ${selectedYears.join(', ')} for the ${selectedBoard} Board.
@@ -54,7 +59,7 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
       Format the output as a JSON array of objects.`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
+        model: "gemini-3-flash-preview",
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -95,18 +100,17 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
         subject: selectedSubject,
         chapter: q.chapter || 'General',
         difficulty: q.difficulty || 'medium',
+        source: `${selectedBoard} ${importType} ${q.sourceYear || selectedYears[0]}`,
         authorUid: userUid,
-        metadata: {
-          source: `${selectedBoard} ${importType} ${q.sourceYear || selectedYears[0]}`,
-          isHistorical: true
-        }
       }));
 
       setGeneratedQuestions(formattedQuestions);
     } catch (err: any) {
       console.error(err);
-      if (err.message?.includes('API_KEY_INVALID')) {
-        setError("Invalid API Key. Please check your Gemini API key in settings.");
+      if (err.message === 'API_KEY_MISSING') {
+        setError("Gemini API key is missing. Please add it to your environment variables.");
+      } else if (err.message?.includes('API_KEY_INVALID')) {
+        setError("Invalid API Key. Please check your Gemini API key.");
       } else {
         setError("Failed to fetch questions. Please try again.");
       }
@@ -115,14 +119,22 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
     }
   };
 
-  const handleAddAll = () => {
-    onAddQuestions(generatedQuestions);
-    onClose();
+  const handleAddAll = async () => {
+    if (generatedQuestions.length === 0) return;
+    setIsAdding(true);
+    try {
+      await onAddQuestions(generatedQuestions);
+      onClose();
+    } catch (err) {
+      setError("Failed to add questions to bank. Please try again.");
+    } finally {
+      setIsAdding(false);
+    }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl">
+    <div className="max-w-5xl mx-auto p-6">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full overflow-hidden shadow-2xl">
         <div className="p-6 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
@@ -133,12 +145,13 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
               <p className="text-sm text-zinc-400">Import historical MCQ questions from Bangladesh Boards</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors">
-            <X size={24} />
+          <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-zinc-800">
+            <X size={20} />
+            <span className="text-sm font-medium">Back to Bank</span>
           </button>
         </div>
 
-        <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(100vh-200px)] custom-scrollbar">
+        <div className="p-6 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">
               <div className="space-y-2">
@@ -244,16 +257,40 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
                 <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider">Preview Generated Questions ({generatedQuestions.length})</h3>
                 <button 
                   onClick={handleAddAll}
-                  className="text-xs font-bold text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1"
+                  disabled={isAdding}
+                  className="text-xs font-bold text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1 disabled:opacity-50"
                 >
-                  <CheckCircle2 size={14} />
-                  Add All to Bank
+                  {isAdding ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      Adding...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={14} />
+                      Add All to Bank
+                    </>
+                  )}
                 </button>
               </div>
               <div className="max-h-60 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
                 {generatedQuestions.map((q, idx) => (
-                  <div key={idx} className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl space-y-2">
-                    <p className="text-sm text-white font-medium">{idx + 1}. {q.text}</p>
+                  <div key={idx} className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl space-y-2 relative group">
+                    <button 
+                      onClick={() => setGeneratedQuestions(prev => prev.filter((_, i) => i !== idx))}
+                      className="absolute top-2 right-2 p-1 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                      title="Remove from import"
+                    >
+                      <X size={14} />
+                    </button>
+                    <div className="flex justify-between items-start gap-4">
+                      <p className="text-sm text-white font-medium">{idx + 1}. {q.text}</p>
+                      {q.source && (
+                        <span className="text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded uppercase whitespace-nowrap">
+                          {q.source}
+                        </span>
+                      )}
+                    </div>
                     <div className="grid grid-cols-2 gap-2 text-xs text-zinc-500">
                       <span>(a) {q.options.a}</span>
                       <span>(b) {q.options.b}</span>

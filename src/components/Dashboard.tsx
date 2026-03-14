@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Exam, Question, Taxonomy } from '../types';
 import { db } from '../firebase';
 import { collection, query, onSnapshot, orderBy, limit, doc, setDoc } from 'firebase/firestore';
-import { BookOpen, FileText, Library, Users, Sparkles, ArrowRight, Plus, Database } from 'lucide-react';
+import { BookOpen, FileText, Library, Users, Sparkles, ArrowRight, Plus, Database, Download } from 'lucide-react';
 import { defaultTaxonomy } from '../data/defaultTaxonomy';
 
 interface DashboardProps {
@@ -10,7 +10,7 @@ interface DashboardProps {
   userName: string;
   bank: Question[];
   taxonomy: Taxonomy;
-  onNavigate: (view: 'bank' | 'editor' | 'preview' | 'saved') => void;
+  onNavigate: (view: 'bank' | 'editor' | 'preview' | 'saved' | 'ai-generator' | 'board-importer') => void;
   onLoadExam: (exam: Exam) => void;
 }
 
@@ -149,7 +149,7 @@ export default function Dashboard({ userUid, userName, bank, taxonomy, onNavigat
           </button>
 
           <button 
-            onClick={() => onNavigate('bank')}
+            onClick={() => onNavigate('ai-generator')}
             className="w-full flex items-center justify-between bg-zinc-900 border border-zinc-800 hover:border-zinc-700 p-4 rounded-xl transition-colors group"
           >
             <div className="flex items-center gap-3">
@@ -157,8 +157,24 @@ export default function Dashboard({ userUid, userName, bank, taxonomy, onNavigat
                 <Sparkles size={20} />
               </div>
               <div className="text-left">
-                <h3 className="font-medium text-white group-hover:text-zinc-200">Generate Questions</h3>
-                <p className="text-xs text-zinc-500">Use AI to build your bank</p>
+                <h3 className="font-medium text-white group-hover:text-zinc-200">AI Generator</h3>
+                <p className="text-xs text-zinc-500">Create custom MCQs with AI</p>
+              </div>
+            </div>
+            <ArrowRight size={18} className="text-zinc-600 group-hover:text-white transition-colors" />
+          </button>
+
+          <button 
+            onClick={() => onNavigate('board-importer')}
+            className="w-full flex items-center justify-between bg-zinc-900 border border-zinc-800 hover:border-zinc-700 p-4 rounded-xl transition-colors group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center">
+                <Download size={20} />
+              </div>
+              <div className="text-left">
+                <h3 className="font-medium text-white group-hover:text-zinc-200">Board Importer</h3>
+                <p className="text-xs text-zinc-500">Import historical board questions</p>
               </div>
             </div>
             <ArrowRight size={18} className="text-zinc-600 group-hover:text-white transition-colors" />

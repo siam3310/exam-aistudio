@@ -4,8 +4,10 @@ import Preview from './components/Preview';
 import QuestionBank from './components/QuestionBank';
 import SavedExams from './components/SavedExams';
 import Dashboard from './components/Dashboard';
+import AIGenerator from './components/AIGenerator';
+import BoardImporter from './components/BoardImporter';
 import { ExamDetails, Question, Taxonomy, Exam } from './types';
-import { FileText, Library, Eye, LogOut, LogIn, UserPlus, BookOpen, Save, FolderOpen, LayoutDashboard } from 'lucide-react';
+import { FileText, Library, Eye, LogOut, LogIn, UserPlus, BookOpen, Save, FolderOpen, LayoutDashboard, Sparkles, Download } from 'lucide-react';
 import { auth, db, googleProvider } from './firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { collection, doc, onSnapshot, setDoc, deleteDoc, query, serverTimestamp, getDoc } from 'firebase/firestore';
@@ -64,7 +66,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
-  const [view, setView] = useState<'dashboard' | 'bank' | 'editor' | 'preview' | 'saved'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'bank' | 'editor' | 'preview' | 'saved' | 'ai-generator' | 'board-importer'>('dashboard');
   
   // Auth state
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -291,6 +293,35 @@ export default function App() {
     }
   };
 
+  const handleAddMultipleQuestions = async (questions: Question[]) => {
+    if (!user) return;
+    console.log(`Attempting to save ${questions.length} questions to Firestore...`);
+    
+    // Optimistic update
+    setBank(prev => [...questions, ...prev]);
+    
+    // Save to Firestore
+    try {
+      const promises = questions.map(q => {
+        const qRef = doc(db, `users/${user.uid}/questions/${q.id}`);
+        return setDoc(qRef, {
+          ...q,
+          createdAt: serverTimestamp()
+        });
+      });
+      await Promise.all(promises);
+      console.log('Successfully saved all questions to Firestore.');
+      showToast(`${questions.length} questions added to bank!`);
+      setView('bank');
+    } catch (error) {
+      console.error("Error adding generated questions:", error);
+      const newIds = new Set(questions.map(q => q.id));
+      setBank(prev => prev.filter(q => !newIds.has(q.id)));
+      showToast('Failed to add questions.');
+      throw error; // Re-throw to be caught by the component
+    }
+  };
+
   const handleLoadExam = (exam: Exam) => {
     setExamDetails({
       institutionName: exam.institutionName,
@@ -301,8 +332,9 @@ export default function App() {
       date: exam.date,
       time: exam.time,
     });
-    setExamQuestions(exam.examQuestions || []);
+    setExamQuestions(exam.examQuestions);
     setView('editor');
+    showToast('Exam loaded successfully!');
   };
 
   if (!isAuthReady) {
@@ -410,6 +442,24 @@ export default function App() {
             Question Bank
           </button>
           <button
+            onClick={() => setView('board-importer')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+              view === 'board-importer' ? 'bg-white text-black shadow-lg shadow-white/5' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+            }`}
+          >
+            <Download size={18} />
+            Board Importer
+          </button>
+          <button
+            onClick={() => setView('ai-generator')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+              view === 'ai-generator' ? 'bg-white text-black shadow-lg shadow-white/5' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+            }`}
+          >
+            <Sparkles size={18} />
+            AI Generator
+          </button>
+          <button
             onClick={() => setView('editor')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
               view === 'editor' ? 'bg-white text-black shadow-lg shadow-white/5' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
@@ -489,6 +539,23 @@ export default function App() {
               setExamQuestions={setExamQuestions}
               userUid={user.uid}
               taxonomy={taxonomy}
+              onNavigate={setView}
+            />
+          )}
+          {view === 'ai-generator' && (
+            <AIGenerator
+              taxonomy={taxonomy}
+              userUid={user.uid}
+              onAddQuestions={handleAddMultipleQuestions}
+              onClose={() => setView('bank')}
+            />
+          )}
+          {view === 'board-importer' && (
+            <BoardImporter
+              taxonomy={taxonomy}
+              userUid={user.uid}
+              onAddQuestions={handleAddMultipleQuestions}
+              onClose={() => setView('bank')}
             />
           )}
           {view === 'editor' && (

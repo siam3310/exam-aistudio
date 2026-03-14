@@ -12,6 +12,7 @@ export interface Question {
   subject: string;
   chapter: string;
   difficulty: 'easy' | 'medium' | 'hard';
+  source?: string;
   createdAt?: any; // Firestore Timestamp
   authorUid?: string;
 }

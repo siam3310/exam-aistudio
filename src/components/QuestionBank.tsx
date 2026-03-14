@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { Question, Taxonomy } from '../types';
-import { Search, Plus, Filter, CheckCircle2, Circle, Trash2, Settings, Sparkles, Pencil, Download, Database } from 'lucide-react';
+import { Search, Plus, Filter, CheckCircle2, Circle, Trash2, Settings, Sparkles, Pencil, Download, Database, ChevronDown, ChevronUp, FileJson, FileSpreadsheet, CheckSquare, Square, X } from 'lucide-react';
 import { db } from '../firebase';
-import { doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import AIGenerator from './AIGenerator';
 import BoardImporter from './BoardImporter';
 import { defaultTaxonomy } from '../data/defaultTaxonomy';
@@ -14,19 +14,20 @@ interface QuestionBankProps {
   setExamQuestions: React.Dispatch<React.SetStateAction<Question[]>>;
   userUid: string;
   taxonomy: Taxonomy;
+  onNavigate: (view: any) => void;
 }
 
-export default function QuestionBank({ bank, setBank, examQuestions, setExamQuestions, userUid, taxonomy }: QuestionBankProps) {
+export default function QuestionBank({ bank, setBank, examQuestions, setExamQuestions, userUid, taxonomy, onNavigate }: QuestionBankProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [classFilter, setClassFilter] = useState<string>('All');
   const [subjectFilter, setSubjectFilter] = useState<string>('All');
   const [chapterFilter, setChapterFilter] = useState<string>('All');
   const [difficultyFilter, setDifficultyFilter] = useState<string>('All');
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'difficulty' | 'subject'>('newest');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isManagingTaxonomy, setIsManagingTaxonomy] = useState(false);
-  const [isAIGeneratorOpen, setIsAIGeneratorOpen] = useState(false);
-  const [isBoardImporterOpen, setIsBoardImporterOpen] = useState(false);
 
   const [newQ, setNewQ] = useState<Partial<Question>>({
     text: '',
@@ -44,15 +45,31 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
   const [taxChapter, setTaxChapter] = useState('');
 
   const filteredBank = useMemo(() => {
-    return bank.filter(q => {
-      const matchesSearch = q.text.toLowerCase().includes(searchTerm.toLowerCase());
+    let result = bank.filter(q => {
+      const searchLower = searchTerm.toLowerCase();
+      const matchesSearch = q.text.toLowerCase().includes(searchLower) || 
+                           (q.source && q.source.toLowerCase().includes(searchLower));
       const matchesClass = classFilter === 'All' || q.className === classFilter;
       const matchesSubject = subjectFilter === 'All' || q.subject === subjectFilter;
       const matchesChapter = chapterFilter === 'All' || q.chapter === chapterFilter;
       const matchesDifficulty = difficultyFilter === 'All' || q.difficulty === difficultyFilter;
       return matchesSearch && matchesClass && matchesSubject && matchesChapter && matchesDifficulty;
     });
-  }, [bank, searchTerm, classFilter, subjectFilter, chapterFilter, difficultyFilter]);
+
+    // Sorting
+    result.sort((a, b) => {
+      if (sortBy === 'newest') return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
+      if (sortBy === 'oldest') return (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0);
+      if (sortBy === 'difficulty') {
+        const order = { easy: 1, medium: 2, hard: 3 };
+        return order[a.difficulty] - order[b.difficulty];
+      }
+      if (sortBy === 'subject') return a.subject.localeCompare(b.subject);
+      return 0;
+    });
+
+    return result;
+  }, [bank, searchTerm, classFilter, subjectFilter, chapterFilter, difficultyFilter, sortBy]);
 
   const handleSaveQuestion = async () => {
     if (!newQ.text || !newQ.className || !newQ.subject || !newQ.chapter) return;
@@ -143,6 +160,7 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
   };
 
   const handleDelete = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this question?')) return;
     // Optimistic update
     const previousBank = [...bank];
     setBank(bank.filter(q => q.id !== id));
@@ -155,6 +173,138 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
       console.error("Error deleting question:", error);
       // Revert optimistic update on error
       setBank(previousBank);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedIds.size} questions?`)) return;
+
+    const previousBank = [...bank];
+    const idsToDelete = Array.from(selectedIds);
+    
+    setBank(bank.filter(q => !selectedIds.has(q.id)));
+    setExamQuestions(examQuestions.filter(q => !selectedIds.has(q.id)));
+    setSelectedIds(new Set());
+
+    try {
+      const batch = writeBatch(db);
+      idsToDelete.forEach(id => {
+        const qRef = doc(db, `users/${userUid}/questions/${id}`);
+        batch.delete(qRef);
+      });
+      await batch.commit();
+    } catch (error) {
+      console.error("Error bulk deleting questions:", error);
+      setBank(previousBank);
+    }
+  };
+
+  const handleBulkAddToExam = () => {
+    const selectedQuestions = bank.filter(q => selectedIds.has(q.id));
+    const newQuestions = selectedQuestions.filter(sq => !examQuestions.some(eq => eq.id === sq.id));
+    setExamQuestions([...examQuestions, ...newQuestions]);
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredBank.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredBank.map(q => q.id)));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const exportToJson = () => {
+    const dataToExport = selectedIds.size > 0 
+      ? bank.filter(q => selectedIds.has(q.id))
+      : filteredBank;
+    
+    const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `question-bank-export-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportToCsv = () => {
+    const dataToExport = selectedIds.size > 0 
+      ? bank.filter(q => selectedIds.has(q.id))
+      : filteredBank;
+
+    const headers = ['Question', 'Option A', 'Option B', 'Option C', 'Option D', 'Answer', 'Class', 'Subject', 'Chapter', 'Difficulty', 'Source'];
+    const rows = dataToExport.map(q => [
+      q.text,
+      q.options.a,
+      q.options.b,
+      q.options.c,
+      q.options.d,
+      q.answer,
+      q.className,
+      q.subject,
+      q.chapter,
+      q.difficulty,
+      q.source || ''
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `question-bank-export-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const stats = useMemo(() => {
+    const total = bank.length;
+    const easy = bank.filter(q => q.difficulty === 'easy').length;
+    const medium = bank.filter(q => q.difficulty === 'medium').length;
+    const hard = bank.filter(q => q.difficulty === 'hard').length;
+    
+    const subjects: Record<string, number> = {};
+    bank.forEach(q => {
+      subjects[q.subject] = (subjects[q.subject] || 0) + 1;
+    });
+
+    return { total, easy, medium, hard, subjects };
+  }, [bank]);
+
+  const findDuplicates = () => {
+    const seen = new Map<string, string>();
+    const duplicates: string[] = [];
+    
+    bank.forEach(q => {
+      const normalized = q.text.toLowerCase().trim().replace(/\s+/g, ' ');
+      if (seen.has(normalized)) {
+        duplicates.push(q.id);
+      } else {
+        seen.set(normalized, q.id);
+      }
+    });
+
+    if (duplicates.length > 0) {
+      setSelectedIds(new Set(duplicates));
+      alert(`Found ${duplicates.length} potential duplicate questions. They have been selected for you.`);
+    } else {
+      alert('No duplicate questions found.');
     }
   };
 
@@ -273,7 +423,15 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight">Question Bank</h1>
-          <p className="text-zinc-400 mt-1">Manage your repository of questions</p>
+          <div className="flex items-center gap-4 mt-1">
+            <p className="text-zinc-400">Manage your repository of questions</p>
+            <div className="h-4 w-[1px] bg-zinc-800" />
+            <div className="flex gap-3 text-[10px] font-bold uppercase tracking-wider">
+              <span className="text-emerald-400">{stats.easy} Easy</span>
+              <span className="text-amber-400">{stats.medium} Medium</span>
+              <span className="text-red-400">{stats.hard} Hard</span>
+            </div>
+          </div>
         </div>
         <div className="flex gap-3">
           <button
@@ -284,14 +442,22 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
             Manage Classes
           </button>
           <button
-            onClick={() => setIsBoardImporterOpen(true)}
+            onClick={findDuplicates}
+            className="flex items-center gap-2 bg-zinc-800 text-zinc-400 px-4 py-2 rounded-lg font-medium hover:bg-zinc-700 hover:text-white transition-colors"
+            title="Find duplicate questions"
+          >
+            <Database size={18} />
+            Find Duplicates
+          </button>
+          <button
+            onClick={() => onNavigate('board-importer')}
             className="flex items-center gap-2 bg-blue-600/20 text-blue-400 border border-blue-500/30 px-4 py-2 rounded-lg font-medium hover:bg-blue-600/30 transition-colors"
           >
             <Download size={18} />
             Board Questions
           </button>
           <button
-            onClick={() => setIsAIGeneratorOpen(true)}
+            onClick={() => onNavigate('ai-generator')}
             className="flex items-center gap-2 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-4 py-2 rounded-lg font-medium hover:bg-emerald-600/30 transition-colors"
           >
             <Sparkles size={18} />
@@ -307,23 +473,7 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
         </div>
       </div>
 
-      {isAIGeneratorOpen && (
-        <AIGenerator
-          taxonomy={taxonomy}
-          userUid={userUid}
-          onAddQuestions={handleAddMultipleQuestions}
-          onClose={() => setIsAIGeneratorOpen(false)}
-        />
-      )}
-
-      {isBoardImporterOpen && (
-        <BoardImporter
-          taxonomy={taxonomy}
-          userUid={userUid}
-          onAddQuestions={handleAddMultipleQuestions}
-          onClose={() => setIsBoardImporterOpen(false)}
-        />
-      )}
+      {/* Modals removed as they are now separate pages */}
 
       {isManagingTaxonomy && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-8">
@@ -523,43 +673,138 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
             className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:border-zinc-600"
           />
         </div>
-        <div className="flex gap-4 flex-wrap">
-          <select
-            value={classFilter}
-            onChange={(e) => { setClassFilter(e.target.value); setSubjectFilter('All'); setChapterFilter('All'); }}
-            className="bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-zinc-600 appearance-none min-w-[120px]"
+        <div className="flex gap-4 flex-wrap items-center">
+          <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
+            <Filter size={16} className="text-zinc-500" />
+            <select
+              value={classFilter}
+              onChange={(e) => { setClassFilter(e.target.value); setSubjectFilter('All'); setChapterFilter('All'); }}
+              className="bg-transparent text-white text-sm focus:outline-none appearance-none min-w-[100px]"
+            >
+              <option value="All">All Classes</option>
+              {taxonomy.classes.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
+            <select
+              value={subjectFilter}
+              onChange={(e) => { setSubjectFilter(e.target.value); setChapterFilter('All'); }}
+              disabled={classFilter === 'All'}
+              className="bg-transparent text-white text-sm focus:outline-none appearance-none min-w-[100px] disabled:opacity-50"
+            >
+              <option value="All">All Subjects</option>
+              {(classFilter !== 'All' ? taxonomy.subjects[classFilter] || [] : []).map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
+            <select
+              value={difficultyFilter}
+              onChange={(e) => setDifficultyFilter(e.target.value)}
+              className="bg-transparent text-white text-sm focus:outline-none appearance-none min-w-[100px]"
+            >
+              <option value="All">All Difficulties</option>
+              <option value="easy">Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
+            <span className="text-xs text-zinc-500 font-bold uppercase">Sort:</span>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              className="bg-transparent text-white text-sm focus:outline-none appearance-none min-w-[100px]"
+            >
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
+              <option value="difficulty">Difficulty</option>
+              <option value="subject">Subject</option>
+            </select>
+          </div>
+          {(classFilter !== 'All' || subjectFilter !== 'All' || chapterFilter !== 'All' || difficultyFilter !== 'All' || searchTerm) && (
+            <button 
+              onClick={() => {
+                setClassFilter('All');
+                setSubjectFilter('All');
+                setChapterFilter('All');
+                setDifficultyFilter('All');
+                setSearchTerm('');
+              }}
+              className="text-xs text-zinc-500 hover:text-white flex items-center gap-1 transition-colors"
+            >
+              <X size={14} />
+              Clear Filters
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Bulk Actions Bar */}
+      {selectedIds.size > 0 && (
+        <div className="bg-emerald-600/10 border border-emerald-500/20 rounded-xl p-4 mb-6 flex items-center justify-between animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-4">
+            <span className="text-sm font-bold text-emerald-400">{selectedIds.size} selected</span>
+            <div className="h-4 w-[1px] bg-zinc-800" />
+            <button 
+              onClick={handleBulkAddToExam}
+              className="text-xs font-bold text-white hover:text-emerald-400 transition-colors flex items-center gap-1.5"
+            >
+              <Plus size={14} />
+              Add to Exam
+            </button>
+            <button 
+              onClick={handleBulkDelete}
+              className="text-xs font-bold text-white hover:text-red-400 transition-colors flex items-center gap-1.5"
+            >
+              <Trash2 size={14} />
+              Delete Selected
+            </button>
+          </div>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={exportToJson}
+              className="text-xs font-bold text-zinc-400 hover:text-white transition-colors flex items-center gap-1.5"
+            >
+              <FileJson size={14} />
+              JSON
+            </button>
+            <button 
+              onClick={exportToCsv}
+              className="text-xs font-bold text-zinc-400 hover:text-white transition-colors flex items-center gap-1.5"
+            >
+              <FileSpreadsheet size={14} />
+              CSV
+            </button>
+            <button 
+              onClick={() => setSelectedIds(new Set())}
+              className="text-xs font-bold text-zinc-500 hover:text-white transition-colors"
+            >
+              Deselect All
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={toggleSelectAll}
+            className="flex items-center gap-2 text-xs font-bold text-zinc-500 hover:text-white transition-colors"
           >
-            <option value="All">All Classes</option>
-            {taxonomy.classes.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <select
-            value={subjectFilter}
-            onChange={(e) => { setSubjectFilter(e.target.value); setChapterFilter('All'); }}
-            disabled={classFilter === 'All'}
-            className="bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-zinc-600 appearance-none min-w-[120px] disabled:opacity-50"
-          >
-            <option value="All">All Subjects</option>
-            {(classFilter !== 'All' ? taxonomy.subjects[classFilter] || [] : []).map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <select
-            value={chapterFilter}
-            onChange={(e) => setChapterFilter(e.target.value)}
-            disabled={subjectFilter === 'All'}
-            className="bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-zinc-600 appearance-none min-w-[120px] disabled:opacity-50"
-          >
-            <option value="All">All Chapters</option>
-            {(classFilter !== 'All' && subjectFilter !== 'All' ? taxonomy.chapters[`${classFilter}_${subjectFilter}`] || [] : []).map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <select
-            value={difficultyFilter}
-            onChange={(e) => setDifficultyFilter(e.target.value)}
-            className="bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-zinc-600 appearance-none min-w-[120px]"
-          >
-            <option value="All">All Difficulties</option>
-            <option value="easy">Easy</option>
-            <option value="medium">Medium</option>
-            <option value="hard">Hard</option>
-          </select>
+            {selectedIds.size === filteredBank.length && filteredBank.length > 0 ? (
+              <CheckSquare size={16} className="text-emerald-500" />
+            ) : (
+              <Square size={16} />
+            )}
+            Select All Visible
+          </button>
+          <span className="text-xs text-zinc-600">({filteredBank.length} questions)</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <button onClick={exportToJson} className="text-xs font-bold text-zinc-500 hover:text-white transition-colors flex items-center gap-1">
+            <Download size={14} />
+            Export
+          </button>
         </div>
       </div>
 
@@ -570,15 +815,24 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
           </div>
         ) : (
           filteredBank.map((q) => {
-            const isSelected = examQuestions.some(eq => eq.id === q.id);
+            const isSelectedForExam = examQuestions.some(eq => eq.id === q.id);
+            const isChecked = selectedIds.has(q.id);
             return (
-              <div key={q.id} className={`flex items-start gap-4 p-4 rounded-xl border transition-colors ${isSelected ? 'bg-zinc-900 border-zinc-700' : 'bg-zinc-950 border-zinc-800 hover:border-zinc-700'}`}>
-                <button
-                  onClick={() => toggleExamQuestion(q)}
-                  className="mt-1 flex-shrink-0 text-zinc-400 hover:text-white transition-colors"
-                >
-                  {isSelected ? <CheckCircle2 className="text-emerald-500" size={24} /> : <Circle size={24} />}
-                </button>
+              <div key={q.id} className={`flex items-start gap-4 p-4 rounded-xl border transition-all ${isChecked ? 'bg-emerald-500/5 border-emerald-500/30' : isSelectedForExam ? 'bg-zinc-900 border-zinc-700' : 'bg-zinc-950 border-zinc-800 hover:border-zinc-700'}`}>
+                <div className="flex flex-col gap-3 mt-1">
+                  <button
+                    onClick={() => toggleSelect(q.id)}
+                    className="flex-shrink-0 text-zinc-600 hover:text-white transition-colors"
+                  >
+                    {isChecked ? <CheckSquare className="text-emerald-500" size={20} /> : <Square size={20} />}
+                  </button>
+                  <button
+                    onClick={() => toggleExamQuestion(q)}
+                    className="flex-shrink-0 text-zinc-600 hover:text-white transition-colors"
+                  >
+                    {isSelectedForExam ? <CheckCircle2 className="text-emerald-500" size={20} /> : <Circle size={20} />}
+                  </button>
+                </div>
                 <div className="flex-1">
                   <div className="flex items-start justify-between gap-4">
                     <p className="font-medium text-white text-lg">{q.text}</p>
@@ -602,6 +856,11 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
                     }`}>
                       {q.difficulty.charAt(0).toUpperCase() + q.difficulty.slice(1)}
                     </span>
+                    {q.source && (
+                      <span className="text-xs font-bold px-2 py-1 bg-blue-500/10 text-blue-400 rounded-md uppercase">
+                        {q.source}
+                      </span>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-sm text-zinc-400">
                     <span className={q.answer === 'a' ? 'text-emerald-400 font-medium' : ''}>(ক) {q.options.a}</span>

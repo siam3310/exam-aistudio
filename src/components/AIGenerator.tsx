@@ -35,7 +35,11 @@ export default function AIGenerator({ taxonomy, userUid, onAddQuestions, onClose
     setSelectedIndices(new Set());
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error('API_KEY_MISSING');
+      }
+      const ai = new GoogleGenAI({ apiKey });
       
       const prompt = `Generate ${count} multiple-choice questions for Class ${className}, Subject ${subject}, Chapter ${chapter}. 
       ${topic ? `Focus specifically on the topic: ${topic}.` : ''}
@@ -92,7 +96,11 @@ export default function AIGenerator({ taxonomy, userUid, onAddQuestions, onClose
       }
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'An error occurred during generation.');
+      if (err.message === 'API_KEY_MISSING') {
+        setError("Gemini API key is missing. Please add it to your environment variables.");
+      } else {
+        setError(err.message || 'An error occurred during generation.');
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -123,9 +131,9 @@ export default function AIGenerator({ taxonomy, userUid, onAddQuestions, onClose
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
-        <div className="flex items-center justify-between p-6 border-b border-zinc-800">
+    <div className="max-w-5xl mx-auto p-6">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full flex flex-col shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between p-6 border-b border-zinc-800 bg-zinc-900/50">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
               <Sparkles size={20} />
@@ -135,12 +143,13 @@ export default function AIGenerator({ taxonomy, userUid, onAddQuestions, onClose
               <p className="text-sm text-zinc-400">Instantly create high-quality MCQs for your classes</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors p-2 bg-zinc-800/50 rounded-lg hover:bg-zinc-800">
+          <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-zinc-800">
             <X size={20} />
+            <span className="text-sm font-medium">Back to Bank</span>
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="p-6">
           {generatedQuestions.length === 0 ? (
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
