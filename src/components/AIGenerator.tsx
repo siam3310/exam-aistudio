@@ -7,26 +7,83 @@ interface AIGeneratorProps {
   taxonomy: Taxonomy;
   userUid: string;
   onAddQuestions: (questions: Question[]) => void;
+  onUpdateTaxonomy: (taxonomy: Taxonomy) => void;
   onClose: () => void;
 }
 
-export default function AIGenerator({ taxonomy, userUid, onAddQuestions, onClose }: AIGeneratorProps) {
+export default function AIGenerator({ taxonomy, userUid, onAddQuestions, onUpdateTaxonomy, onClose }: AIGeneratorProps) {
   const [className, setClassName] = useState('');
   const [subject, setSubject] = useState('');
-  const [chapter, setChapter] = useState('');
+  const [selectedChapters, setSelectedChapters] = useState<string[]>([]);
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [count, setCount] = useState(5);
   const [language, setLanguage] = useState<'Bengali' | 'English'>('Bengali');
   const [topic, setTopic] = useState('');
   
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isFetchingChapters, setIsFetchingChapters] = useState(false);
   const [generatedQuestions, setGeneratedQuestions] = useState<Partial<Question>[]>([]);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [error, setError] = useState('');
 
+  const handleFetchChapters = async () => {
+    if (!className || !subject) return;
+    setIsFetchingChapters(true);
+    setError('');
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) throw new Error('API_KEY_MISSING');
+      const ai = new GoogleGenAI({ apiKey });
+      
+      const prompt = `List ALL the latest chapters for Class ${className} Subject ${subject} according to the Bangladesh National Curriculum (NCTB) 2024-2025. 
+      Include every single chapter from the textbook. 
+      Return the response as a JSON array of strings (chapter names in Bengali). 
+      Ensure the names are accurate and complete.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING }
+          }
+        }
+      });
+
+      const fetchedChapters = JSON.parse(response.text || '[]');
+      if (Array.isArray(fetchedChapters) && fetchedChapters.length > 0) {
+        const key = `${className}_${subject}`;
+        const existingChapters = taxonomy.chapters ? taxonomy.chapters[key] || [] : [];
+        const newTaxonomy = {
+          ...taxonomy,
+          chapters: {
+            ...(taxonomy.chapters || {}),
+            [key]: Array.from(new Set([...existingChapters, ...fetchedChapters]))
+          }
+        };
+        onUpdateTaxonomy(newTaxonomy);
+      } else {
+        setError('Could not find chapters for this subject.');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError('Failed to fetch chapters: ' + err.message);
+    } finally {
+      setIsFetchingChapters(false);
+    }
+  };
+
+  const toggleChapter = (c: string) => {
+    setSelectedChapters(prev => 
+      prev.includes(c) ? prev.filter(item => item !== c) : [...prev, c]
+    );
+  };
+
   const handleGenerate = async () => {
-    if (!className || !subject || !chapter) {
-      setError('Please select Class, Subject, and Chapter.');
+    if (!className || !subject || selectedChapters.length === 0) {
+      setError('Please select Class, Subject, and at least one Chapter.');
       return;
     }
     setError('');
@@ -41,7 +98,8 @@ export default function AIGenerator({ taxonomy, userUid, onAddQuestions, onClose
       }
       const ai = new GoogleGenAI({ apiKey });
       
-      const prompt = `Generate ${count} multiple-choice questions for Class ${className}, Subject ${subject}, Chapter ${chapter}. 
+      const prompt = `Generate ${count} multiple-choice questions for Class ${className}, Subject ${subject}.
+      Focus on the following chapters: ${selectedChapters.join(', ')}.
       ${topic ? `Focus specifically on the topic: ${topic}.` : ''}
       The difficulty level should be ${difficulty}.
       The language of the questions and options MUST be in ${language}.
@@ -84,7 +142,7 @@ export default function AIGenerator({ taxonomy, userUid, onAddQuestions, onClose
           ...q,
           className,
           subject,
-          chapter,
+          chapter: selectedChapters.join(', '),
           difficulty,
           authorUid: userUid
         }));
@@ -157,7 +215,7 @@ export default function AIGenerator({ taxonomy, userUid, onAddQuestions, onClose
                   <label className="block text-sm font-medium text-zinc-400 mb-1.5">Class</label>
                   <select
                     value={className}
-                    onChange={(e) => { setClassName(e.target.value); setSubject(''); setChapter(''); }}
+                    onChange={(e) => { setClassName(e.target.value); setSubject(''); setSelectedChapters([]); }}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all appearance-none"
                   >
                     <option value="">Select Class</option>
@@ -168,7 +226,7 @@ export default function AIGenerator({ taxonomy, userUid, onAddQuestions, onClose
                   <label className="block text-sm font-medium text-zinc-400 mb-1.5">Subject</label>
                   <select
                     value={subject}
-                    onChange={(e) => { setSubject(e.target.value); setChapter(''); }}
+                    onChange={(e) => { setSubject(e.target.value); setSelectedChapters([]); }}
                     disabled={!className}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all appearance-none disabled:opacity-50"
                   >
@@ -176,17 +234,54 @@ export default function AIGenerator({ taxonomy, userUid, onAddQuestions, onClose
                     {(className ? taxonomy.subjects[className] || [] : []).map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-zinc-400 mb-1.5">Chapter</label>
-                  <select
-                    value={chapter}
-                    onChange={(e) => setChapter(e.target.value)}
-                    disabled={!subject}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all appearance-none disabled:opacity-50"
-                  >
-                    <option value="">Select Chapter</option>
-                    {(className && subject ? taxonomy.chapters[`${className}_${subject}`] || [] : []).map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
+                <div className="md:col-span-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-sm font-medium text-zinc-400">Chapters (Select Multiple)</label>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => {
+                          const key = `${className}_${subject}`;
+                          setSelectedChapters(taxonomy.chapters[key] || []);
+                        }}
+                        className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 uppercase"
+                      >
+                        Select All
+                      </button>
+                      <button 
+                        onClick={() => setSelectedChapters([])}
+                        className="text-[10px] text-zinc-500 hover:text-zinc-400 font-bold uppercase"
+                      >
+                        Clear
+                      </button>
+                      <button 
+                        onClick={handleFetchChapters}
+                        disabled={!subject || isFetchingChapters}
+                        className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 uppercase flex items-center gap-1 disabled:opacity-50 ml-2"
+                      >
+                        {isFetchingChapters ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                        Fetch Latest Chapters with AI
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 bg-zinc-950 border border-zinc-800 rounded-xl p-3 max-h-40 overflow-y-auto custom-scrollbar">
+                    {(className && subject ? taxonomy.chapters[`${className}_${subject}`] || [] : []).map(c => (
+                      <button
+                        key={c}
+                        onClick={() => toggleChapter(c)}
+                        className={`px-3 py-2 rounded-lg text-xs font-medium transition-all border text-left truncate ${
+                          selectedChapters.includes(c)
+                            ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400'
+                            : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700'
+                        }`}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                    {(!className || !subject) && <p className="col-span-full text-center py-4 text-zinc-600 text-xs italic">Select Class and Subject first</p>}
+                    {(className && subject && (!taxonomy.chapters[`${className}_${subject}`] || taxonomy.chapters[`${className}_${subject}`].length === 0)) && (
+                      <p className="col-span-full text-center py-4 text-zinc-600 text-xs italic">No chapters found. Use AI to fetch them!</p>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -248,7 +343,7 @@ export default function AIGenerator({ taxonomy, userUid, onAddQuestions, onClose
 
               <button
                 onClick={handleGenerate}
-                disabled={isGenerating || !className || !subject || !chapter}
+                disabled={isGenerating || !className || !subject || selectedChapters.length === 0}
                 className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white px-4 py-3 rounded-xl font-medium hover:bg-emerald-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-900/20"
               >
                 {isGenerating ? (

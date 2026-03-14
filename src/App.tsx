@@ -337,6 +337,18 @@ export default function App() {
     showToast('Exam loaded successfully!');
   };
 
+  const handleUpdateTaxonomy = async (newTaxonomy: Taxonomy) => {
+    if (!user) return;
+    try {
+      const taxonomyPath = `users/${user.uid}/settings/taxonomy`;
+      await setDoc(doc(db, taxonomyPath), newTaxonomy);
+      showToast('Taxonomy updated successfully!');
+    } catch (error) {
+      console.error("Error updating taxonomy:", error);
+      showToast('Failed to update taxonomy.');
+    }
+  };
+
   if (!isAuthReady) {
     return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">Loading...</div>;
   }
@@ -539,6 +551,7 @@ export default function App() {
               setExamQuestions={setExamQuestions}
               userUid={user.uid}
               taxonomy={taxonomy}
+              onUpdateTaxonomy={handleUpdateTaxonomy}
               onNavigate={setView}
             />
           )}
@@ -547,6 +560,7 @@ export default function App() {
               taxonomy={taxonomy}
               userUid={user.uid}
               onAddQuestions={handleAddMultipleQuestions}
+              onUpdateTaxonomy={handleUpdateTaxonomy}
               onClose={() => setView('bank')}
             />
           )}

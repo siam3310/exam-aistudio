@@ -16,9 +16,10 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedYears, setSelectedYears] = useState<string[]>(['2023']);
-  const [selectedBoard, setSelectedBoard] = useState('Dhaka');
-  const [importType, setImportType] = useState<'Board' | 'Model Test' | 'Test Exam'>('Board');
+  const [selectedBoards, setSelectedBoards] = useState<string[]>(['Dhaka']);
+  const [selectedImportTypes, setSelectedImportTypes] = useState<string[]>(['Board']);
   const [generatedQuestions, setGeneratedQuestions] = useState<Question[]>([]);
+  const [selectedQuestionIds, setSelectedQuestionIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
   const years = Array.from({ length: 15 }, (_, i) => (2024 - i).toString());
@@ -32,12 +33,47 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
     );
   };
 
+  const toggleBoard = (board: string) => {
+    setSelectedBoards(prev => 
+      prev.includes(board) 
+        ? (prev.length > 1 ? prev.filter(b => b !== board) : prev)
+        : [...prev, board]
+    );
+  };
+
+  const toggleImportType = (type: string) => {
+    setSelectedImportTypes(prev => 
+      prev.includes(type) 
+        ? (prev.length > 1 ? prev.filter(t => t !== type) : prev)
+        : [...prev, type]
+    );
+  };
+
+  const toggleQuestionSelection = (id: string) => {
+    const newSelected = new Set(selectedQuestionIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedQuestionIds(newSelected);
+  };
+
+  const handleSelectAllQuestions = () => {
+    if (selectedQuestionIds.size === generatedQuestions.length) {
+      setSelectedQuestionIds(new Set());
+    } else {
+      setSelectedQuestionIds(new Set(generatedQuestions.map(q => q.id)));
+    }
+  };
+
   const handleImport = async () => {
-    if (!selectedClass || !selectedSubject || selectedYears.length === 0) return;
+    if (!selectedClass || !selectedSubject || selectedYears.length === 0 || selectedBoards.length === 0 || selectedImportTypes.length === 0) return;
     
     setLoading(true);
     setError(null);
     setGeneratedQuestions([]);
+    setSelectedQuestionIds(new Set());
 
     try {
       const apiKey = process.env.GEMINI_API_KEY;
@@ -46,15 +82,15 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
       }
       const ai = new GoogleGenAI({ apiKey });
       const prompt = `Act as a Bangladesh Education Board Question Expert and Curriculum Specialist. 
-      Generate a comprehensive set of MCQ questions (at least 15-20) for ${selectedClass} ${selectedSubject}.
-      The questions should be sourced from or inspired by ${importType} questions from the following years: ${selectedYears.join(', ')} for the ${selectedBoard} Board.
+      Generate a comprehensive set of MCQ questions (at least 20-30) for ${selectedClass} ${selectedSubject}.
+      The questions should be sourced from or inspired by ${selectedImportTypes.join(', ')} questions from the following years: ${selectedYears.join(', ')} for the following Boards: ${selectedBoards.join(', ')}.
       
       Requirements:
       1. Language: Bengali (Unicode).
       2. Content: Must be accurate to the Bangladesh National Curriculum (NCTB).
       3. Structure: Each question must have 4 options (a, b, c, d) and 1 correct answer.
       4. Variety: Include questions from different chapters and difficulty levels (easy, medium, hard).
-      5. Metadata: Identify which year/source each question is likely from if possible.
+      5. Metadata: Identify which specific Board and Year each question is likely from.
       
       Format the output as a JSON array of objects.`;
 
@@ -82,7 +118,9 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
                 answer: { type: Type.STRING, enum: ["a", "b", "c", "d"] },
                 chapter: { type: Type.STRING, description: "Relevant chapter name in Bengali" },
                 difficulty: { type: Type.STRING, enum: ["easy", "medium", "hard"] },
-                sourceYear: { type: Type.STRING, description: "The year this question is from" }
+                sourceBoard: { type: Type.STRING, description: "The board this question is from" },
+                sourceYear: { type: Type.STRING, description: "The year this question is from" },
+                sourceType: { type: Type.STRING, description: "Board/Model Test/Test Exam" }
               },
               required: ["text", "options", "answer", "chapter", "difficulty"]
             }
@@ -91,20 +129,24 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
       });
 
       const data = JSON.parse(response.text || '[]');
-      const formattedQuestions: Question[] = data.map((q: any) => ({
-        id: crypto.randomUUID(),
-        text: q.text,
-        options: q.options,
-        answer: q.answer,
-        className: selectedClass,
-        subject: selectedSubject,
-        chapter: q.chapter || 'General',
-        difficulty: q.difficulty || 'medium',
-        source: `${selectedBoard} ${importType} ${q.sourceYear || selectedYears[0]}`,
-        authorUid: userUid,
-      }));
+      const formattedQuestions: Question[] = data.map((q: any) => {
+        const id = crypto.randomUUID();
+        return {
+          id,
+          text: q.text,
+          options: q.options,
+          answer: q.answer,
+          className: selectedClass,
+          subject: selectedSubject,
+          chapter: q.chapter || 'General',
+          difficulty: q.difficulty || 'medium',
+          source: `${q.sourceBoard || selectedBoards[0]} ${q.sourceType || selectedImportTypes[0]} ${q.sourceYear || selectedYears[0]}`,
+          authorUid: userUid,
+        };
+      });
 
       setGeneratedQuestions(formattedQuestions);
+      setSelectedQuestionIds(new Set(formattedQuestions.map(q => q.id)));
     } catch (err: any) {
       console.error(err);
       if (err.message === 'API_KEY_MISSING') {
@@ -119,11 +161,13 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
     }
   };
 
-  const handleAddAll = async () => {
-    if (generatedQuestions.length === 0) return;
+  const handleAddSelected = async () => {
+    const questionsToAdd = generatedQuestions.filter(q => selectedQuestionIds.has(q.id));
+    if (questionsToAdd.length === 0) return;
+    
     setIsAdding(true);
     try {
-      await onAddQuestions(generatedQuestions);
+      await onAddQuestions(questionsToAdd);
       onClose();
     } catch (err) {
       setError("Failed to add questions to bank. Please try again.");
@@ -178,14 +222,14 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Import Type</label>
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Import Types (Multiple)</label>
                 <div className="grid grid-cols-3 gap-2">
                   {(['Board', 'Model Test', 'Test Exam'] as const).map(type => (
                     <button
                       key={type}
-                      onClick={() => setImportType(type)}
+                      onClick={() => toggleImportType(type)}
                       className={`px-3 py-2 rounded-lg text-xs font-bold transition-all border ${
-                        importType === type 
+                        selectedImportTypes.includes(type) 
                           ? 'bg-emerald-600 border-emerald-500 text-white' 
                           : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                       }`}
@@ -196,14 +240,38 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Board</label>
-                <select
-                  value={selectedBoard}
-                  onChange={(e) => setSelectedBoard(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500/50 transition-colors appearance-none"
-                >
-                  {boards.map(b => <option key={b} value={b}>{b}</option>)}
-                </select>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Boards (Multiple)</label>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => setSelectedBoards(boards)}
+                      className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold uppercase"
+                    >
+                      All
+                    </button>
+                    <button 
+                      onClick={() => setSelectedBoards(['Dhaka'])}
+                      className="text-[10px] text-zinc-500 hover:text-zinc-400 font-bold uppercase"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2 bg-zinc-950 border border-zinc-800 rounded-xl p-3 max-h-[150px] overflow-y-auto custom-scrollbar">
+                  {boards.map(b => (
+                    <button
+                      key={b}
+                      onClick={() => toggleBoard(b)}
+                      className={`px-2 py-2 rounded-lg text-[10px] font-medium transition-all border ${
+                        selectedBoards.includes(b)
+                          ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400'
+                          : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700'
+                      }`}
+                    >
+                      {b}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -254,48 +322,68 @@ export default function BoardImporter({ taxonomy, userUid, onAddQuestions, onClo
           {generatedQuestions.length > 0 && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider">Preview Generated Questions ({generatedQuestions.length})</h3>
+                <div className="flex items-center gap-4">
+                  <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider">Preview Generated Questions ({generatedQuestions.length})</h3>
+                  <button 
+                    onClick={handleSelectAllQuestions}
+                    className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 uppercase"
+                  >
+                    {selectedQuestionIds.size === generatedQuestions.length ? 'Deselect All' : 'Select All'}
+                  </button>
+                </div>
                 <button 
-                  onClick={handleAddAll}
-                  disabled={isAdding}
+                  onClick={handleAddSelected}
+                  disabled={isAdding || selectedQuestionIds.size === 0}
                   className="text-xs font-bold text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1 disabled:opacity-50"
                 >
                   {isAdding ? (
                     <>
                       <Loader2 size={14} className="animate-spin" />
-                      Adding...
+                      Adding {selectedQuestionIds.size}...
                     </>
                   ) : (
                     <>
                       <CheckCircle2 size={14} />
-                      Add All to Bank
+                      Add Selected ({selectedQuestionIds.size}) to Bank
                     </>
                   )}
                 </button>
               </div>
-              <div className="max-h-60 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+              <div className="max-h-80 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
                 {generatedQuestions.map((q, idx) => (
-                  <div key={idx} className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl space-y-2 relative group">
-                    <button 
-                      onClick={() => setGeneratedQuestions(prev => prev.filter((_, i) => i !== idx))}
-                      className="absolute top-2 right-2 p-1 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
-                      title="Remove from import"
-                    >
-                      <X size={14} />
-                    </button>
-                    <div className="flex justify-between items-start gap-4">
-                      <p className="text-sm text-white font-medium">{idx + 1}. {q.text}</p>
-                      {q.source && (
-                        <span className="text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded uppercase whitespace-nowrap">
-                          {q.source}
-                        </span>
-                      )}
+                  <div 
+                    key={q.id} 
+                    onClick={() => toggleQuestionSelection(q.id)}
+                    className={`p-4 border rounded-xl space-y-2 relative group cursor-pointer transition-all ${
+                      selectedQuestionIds.has(q.id) 
+                        ? 'bg-emerald-500/5 border-emerald-500/30' 
+                        : 'bg-zinc-950 border-zinc-800 hover:border-zinc-700'
+                    }`}
+                  >
+                    <div className="absolute top-4 left-4">
+                      <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
+                        selectedQuestionIds.has(q.id) 
+                          ? 'bg-emerald-500 border-emerald-500 text-white' 
+                          : 'bg-zinc-900 border-zinc-700'
+                      }`}>
+                        {selectedQuestionIds.has(q.id) && <CheckCircle2 size={10} />}
+                      </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs text-zinc-500">
-                      <span>(a) {q.options.a}</span>
-                      <span>(b) {q.options.b}</span>
-                      <span>(c) {q.options.c}</span>
-                      <span>(d) {q.options.d}</span>
+                    <div className="pl-8">
+                      <div className="flex justify-between items-start gap-4">
+                        <p className="text-sm text-white font-medium">{idx + 1}. {q.text}</p>
+                        {q.source && (
+                          <span className="text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded uppercase whitespace-nowrap">
+                            {q.source}
+                          </span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs text-zinc-500 mt-2">
+                        <span>(a) {q.options.a}</span>
+                        <span>(b) {q.options.b}</span>
+                        <span>(c) {q.options.c}</span>
+                        <span>(d) {q.options.d}</span>
+                      </div>
                     </div>
                   </div>
                 ))}

@@ -55,6 +55,7 @@
         "subject": { "type": "string" },
         "chapter": { "type": "string" },
         "difficulty": { "type": "string", "enum": ["easy", "medium", "hard"] },
+        "source": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
         "authorUid": { "type": "string" }
       },

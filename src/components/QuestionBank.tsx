@@ -14,10 +14,11 @@ interface QuestionBankProps {
   setExamQuestions: React.Dispatch<React.SetStateAction<Question[]>>;
   userUid: string;
   taxonomy: Taxonomy;
+  onUpdateTaxonomy: (taxonomy: Taxonomy) => void;
   onNavigate: (view: any) => void;
 }
 
-export default function QuestionBank({ bank, setBank, examQuestions, setExamQuestions, userUid, taxonomy, onNavigate }: QuestionBankProps) {
+export default function QuestionBank({ bank, setBank, examQuestions, setExamQuestions, userUid, taxonomy, onUpdateTaxonomy, onNavigate }: QuestionBankProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [classFilter, setClassFilter] = useState<string>('All');
   const [subjectFilter, setSubjectFilter] = useState<string>('All');
@@ -309,11 +310,7 @@ export default function QuestionBank({ bank, setBank, examQuestions, setExamQues
   };
 
   const saveTaxonomy = async (newTaxonomy: Taxonomy) => {
-    try {
-      await setDoc(doc(db, `users/${userUid}/settings/taxonomy`), newTaxonomy);
-    } catch (error) {
-      console.error("Error saving taxonomy:", error);
-    }
+    onUpdateTaxonomy(newTaxonomy);
   };
 
   const addClass = () => {

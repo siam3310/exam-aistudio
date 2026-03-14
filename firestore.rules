@@ -33,6 +33,7 @@ service cloud.firestore {
     //   - subject: string (required)
     //   - chapter: string (required)
     //   - difficulty: string (required, enum: easy,medium,hard)
+    //   - source: string (optional)
     //   - createdAt: timestamp (required, immutable)
     //   - authorUid: string (required, immutable)
     //
@@ -110,7 +111,7 @@ service cloud.firestore {
     }
 
     function isValidQuestion(data) {
-      return hasOnlyAllowedFields(['id', 'text', 'options', 'answer', 'className', 'subject', 'chapter', 'difficulty', 'createdAt', 'authorUid']) &&
+      return hasOnlyAllowedFields(['id', 'text', 'options', 'answer', 'className', 'subject', 'chapter', 'difficulty', 'source', 'createdAt', 'authorUid']) &&
              data.id is string && data.id.size() > 0 && data.id.size() <= 100 &&
              data.text is string && data.text.size() > 0 && data.text.size() <= 2000 &&
              data.options is map && data.options.keys().hasOnly(['a', 'b', 'c', 'd']) &&
@@ -123,6 +124,7 @@ service cloud.firestore {
              data.subject is string && data.subject.size() <= 100 &&
              data.chapter is string && data.chapter.size() <= 100 &&
              data.difficulty in ['easy', 'medium', 'hard'] &&
+             (!('source' in data) || data.source == null || (data.source is string && data.source.size() <= 500)) &&
              data.createdAt is timestamp &&
              data.authorUid is string && data.authorUid == request.auth.uid;
     }
